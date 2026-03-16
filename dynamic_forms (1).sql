@@ -189,11 +189,6 @@ CREATE TABLE `users` (
 -- Extraindo dados da tabela `users`
 --
 
-INSERT INTO `users` (`id`, `name`, `email`, `password`, `role`, `is_active`, `created_at`, `updated_at`) VALUES
-(1, 'Admin', 'admin@example.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'admin', 1, '2024-07-28 16:07:33', '2024-07-28 16:07:33'),
-(3, 'Userjnj2', 'user2@example.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'user', 1, '2024-07-28 16:07:33', '2026-03-14 19:54:44'),
-(4, 'Adjelson Neves', 'gpt@gmail.com', '$2y$10$.XF2WyFh8q9r4NYEufKCjeunYy/aZJdKHVfIf5Zj1tkvMfKPGsfbe', 'admin', 1, '2026-03-14 18:21:49', '2026-03-14 18:52:49'),
-(9, 'Guilherme dos Santos', 'brigit3e@gmail.com', '$2y$10$./XifMoa7cmyxr.fkiBiE.hBeFxu4Uv2QyYZB1xawDCI4XEew2NXy', 'user', 1, '2026-03-16 11:44:02', '2026-03-16 11:44:02');
 
 -- --------------------------------------------------------
 
