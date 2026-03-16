@@ -1,0 +1,19 @@
+# ============================================================
+#  public/.htaccess — XAMPP / Apache
+#  Front-controller: tudo passa por index.php
+# ============================================================
+<IfModule mod_rewrite.c>
+    Options -Indexes
+    RewriteEngine On
+    RewriteBase /dynamic_forms/public/
+
+    # Deixa passar ficheiros e pastas que existam de facto (css, js…)
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+
+    # Tudo o resto vai para o router
+    RewriteRule ^(.*)$ index.php?url=$1 [QSA,L]
+</IfModule>
+
+# Bloqueia listagem de directórios
+Options -Indexes

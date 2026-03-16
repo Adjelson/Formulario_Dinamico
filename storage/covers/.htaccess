@@ -1,0 +1,5 @@
+# covers — servido pelo CoverController, não directamente
+# Bloquear execução de PHP/scripts
+php_flag engine off
+AddType text/plain .php .phtml .php3 .php5 .php7 .php8 .phar
+Options -Indexes
