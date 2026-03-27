@@ -15,7 +15,7 @@ define('APPROOT', dirname(dirname(__FILE__)));
 
 // ---- URL base ----
 // Ajuste 'dynamic_forms' para o nome da pasta dentro de htdocs (XAMPP) ou wwwroot (IIS)
-define('URLROOT', 'http://localhost/Formulario_Dinamico/public');
+define('URLROOT', 'https://localhost/dynamic_forms');
 
 // ---- Nome e versão ----
 define('SITENAME', 'Dynamic Forms');

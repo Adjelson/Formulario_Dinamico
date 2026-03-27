@@ -489,6 +489,31 @@ body {
 .upload-zone:hover { border-color: var(--green-400); background: var(--green-50); }
 .upload-zone i { font-size: 2rem; color: var(--green-500); margin-bottom: .5rem; }
 .upload-zone p  { margin: 0; color: var(--black-500); font-size: .875rem; }
+/* estado erro */
+.qfill-block.has-error {
+    border-color: #ef4444 !important;
+    box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.2);
+}
+
+/* mensagem erro */
+.qfill-error {
+    font-size: .8rem;
+    color: #ef4444;
+    margin-top: .5rem;
+    display: flex;
+    align-items: center;
+    gap: .3rem;
+}
+
+/* input inválido */
+.is-invalid {
+    border-color: #ef4444 !important;
+}
+
+/* input válido */
+.is-valid {
+    border-color: #22c55e !important;
+}
 
 /* ── Auth Views ───────────────────────────────────────────── */
 .auth-divider { position: relative; text-align: center; margin: 1.25rem 0; }
@@ -962,3 +987,170 @@ body {
     font-size: .8rem; color: var(--black-500);
     display: flex; align-items: center; gap: .4rem;
 }
+
+/* ================================================================
+   ALREADY RESPONDED — ecrã quando utilizador já respondeu
+   ================================================================ */
+
+.already-responded-card {
+    text-align: center;
+    padding: 2.5rem 1.5rem;
+    background: var(--white);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--black-200);
+}
+
+.arc-check {
+    width: 72px; height: 72px;
+    background: var(--green-50);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 2rem; color: var(--green-600);
+    margin: 0 auto 1.25rem;
+    border: 3px solid var(--green-200);
+    animation: arcPop .4s cubic-bezier(.34,1.56,.64,1);
+}
+
+@keyframes arcPop {
+    from { transform: scale(0); opacity: 0; }
+    to   { transform: scale(1); opacity: 1; }
+}
+
+.arc-title {
+    font-size: 1.3rem; font-weight: 800;
+    color: var(--black-900); margin-bottom: .5rem;
+}
+
+.arc-date {
+    color: var(--black-500); font-size: .9rem;
+    margin-bottom: 1.5rem;
+}
+
+.arc-actions {
+    display: flex; gap: 1rem; justify-content: center;
+    flex-wrap: wrap; margin-bottom: 1.25rem;
+}
+
+.arc-note {
+    font-size: .8rem; color: var(--black-400);
+    max-width: 400px; margin: 0 auto;
+}
+
+/* Modal overlay */
+.arc-modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.5);
+    display: none; align-items: center; justify-content: center;
+    z-index: 9998;
+    backdrop-filter: blur(2px);
+}
+.arc-modal-overlay.visible { display: flex; }
+
+.arc-modal {
+    background: var(--white);
+    border-radius: var(--radius-lg);
+    padding: 2rem;
+    max-width: 440px; width: 90%;
+    box-shadow: var(--shadow-xl);
+    text-align: center;
+    animation: arcModalIn .25s ease;
+}
+
+@keyframes arcModalIn {
+    from { transform: scale(.92) translateY(12px); opacity: 0; }
+    to   { transform: scale(1)   translateY(0);    opacity: 1; }
+}
+
+.arc-modal-icon {
+    width: 56px; height: 56px;
+    background: #fffbeb;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.5rem; color: #f59e0b;
+    margin: 0 auto 1rem;
+    border: 2px solid #fde68a;
+}
+
+.arc-modal h4 { font-weight: 800; font-size: 1.15rem; margin-bottom: .5rem; }
+.arc-modal p  { color: var(--black-500); font-size: .9rem; margin-bottom: 0; }
+
+.arc-modal-actions {
+    display: flex; gap: .75rem; justify-content: center;
+    margin-top: 1.5rem; flex-wrap: wrap;
+}
+
+/* Preview de pergunta para admin */
+.qfill-block-preview {
+    opacity: .75;
+    pointer-events: none;
+}
+.qfill-type-badge {
+    display: inline-block;
+    font-size: .72rem; font-weight: 600;
+    padding: .2rem .6rem;
+    background: var(--black-100);
+    color: var(--black-500);
+    border-radius: 20px;
+    margin-top: .4rem;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+
+/* ── Badge "Respondido" nos cards de formulários ──────────────── */
+.form-card-cover { position: relative; }
+
+.form-card-responded-badge {
+    position: absolute; top: .6rem; right: .6rem;
+    background: var(--green-600); color: #fff;
+    font-size: .72rem; font-weight: 700;
+    padding: .25rem .65rem;
+    border-radius: 20px;
+    display: flex; align-items: center; gap: .3rem;
+    box-shadow: 0 2px 6px rgba(0,0,0,.2);
+}
+
+.form-card-responded-strip {
+    position: absolute; inset: 0;
+    background: linear-gradient(90deg, var(--green-600), var(--green-700));
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: .75rem; font-weight: 700;
+    letter-spacing: .03em;
+}
+
+/* ── "Já Respondido" — estados dos cards e formulário ─────── */
+.form-card-answered {
+    border-color: var(--green-200);
+    background: var(--green-50);
+}
+.form-card-answered .form-card-title { color: var(--green-800); }
+
+.form-card-accent-done {
+    background: linear-gradient(90deg, var(--green-400), var(--green-600));
+}
+
+.form-card-answered-overlay {
+    position: absolute; inset: 0;
+    background: rgba(22,163,74,.25);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 3rem; color: #fff;
+    text-shadow: 0 2px 8px rgba(0,0,0,.3);
+}
+
+/* Caixa de "já respondeu" no formulário */
+.already-answered-box {
+    display: flex; align-items: flex-start; gap: 1.25rem;
+    background: var(--green-50);
+    border: 2px solid var(--green-200);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
+}
+.already-answered-icon {
+    font-size: 2.5rem; color: var(--green-500);
+    flex-shrink: 0; line-height: 1;
+    margin-top: .1rem;
+}
+.already-answered-content h4 {
+    font-weight: 700; color: var(--green-800);
+    font-size: 1.05rem; margin-bottom: .4rem;
+}
+.already-answered-content p { color: var(--green-700); margin-bottom: .4rem; }

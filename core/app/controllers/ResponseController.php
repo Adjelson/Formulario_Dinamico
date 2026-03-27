@@ -46,6 +46,13 @@ class ResponseController extends Controller {
             header("Location:" . URLROOT . "/admin/forms"); exit();
         }
 
+        // Verificar se o utilizador já respondeu — bloquear segunda submissão
+        $existing = $this->responseModel->getUserResponseForForm($_SESSION["user_id"], $form->id);
+        if ($existing) {
+            // Já respondeu — redirecionar para a página do formulário com aviso
+            header("Location:" . URLROOT . "/forms/" . $slug . "?already=1"); exit();
+        }
+
         $responseId = $this->responseModel->addResponse([
             "form_id"    => $form->id,
             "user_id"    => $_SESSION["user_id"],
@@ -111,6 +118,49 @@ class ResponseController extends Controller {
             ]);
         }
         header("Location:" . URLROOT . "/forms/" . $slug . "/success"); exit();
+    }
+
+    /**
+     * Permite ao utilizador eliminar a SUA PRÓPRIA resposta a um formulário
+     * para poder preencher novamente.
+     * Arquiva no trash antes de eliminar — dados nunca se perdem.
+     */
+    public function deleteOwn() {
+        if (!isset($_SESSION["user_id"])) {
+            header("Location:" . URLROOT . "/login"); exit();
+        }
+        if ($_SESSION["user_role"] == "admin") {
+            header("Location:" . URLROOT . "/admin/dashboard"); exit();
+        }
+
+        $response_id = $this->params["id"] ?? null;
+        $slug        = $this->params["slug"] ?? null;
+
+        if ($_SERVER["REQUEST_METHOD"] == "POST" && $response_id) {
+            $response = $this->responseModel->getResponseDetail($response_id);
+
+            // Segurança: só pode eliminar a SUA própria resposta
+            if (!$response || $response->user_id != $_SESSION["user_id"]) {
+                http_response_code(403);
+                die("Acesso negado.");
+            }
+
+            $answers = $this->answerModel->getAnswersByResponseId($response_id);
+
+            // Arquivar no trash (nunca perder dados)
+            $trash = $this->model("Trash");
+            $trash->archiveResponse($response, $answers, $_SESSION["user_id"]);
+
+            // Eliminar respostas (os ficheiros de upload mantêm-se no disco)
+            $this->answerModel->deleteAnswersByResponseId($response_id);
+            $this->responseModel->deleteResponse($response_id);
+
+            // Redirecionar para o formulário para preencher novamente
+            $redirect = $slug ? "/forms/" . $slug : "/home";
+            header("Location:" . URLROOT . $redirect . "?cleared=1"); exit();
+        }
+
+        header("Location:" . URLROOT . "/home"); exit();
     }
 
     public function history() {

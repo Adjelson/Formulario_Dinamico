@@ -24,8 +24,7 @@
 <!-- NAVBAR -->
 <nav class="navbar navbar-expand-lg navbar-dark df-navbar sticky-top">
     <div class="container-xl">
-        <a class="navbar-brand d-flex align-items-center gap-2" href="<?php echo URLROOT; ?>">
-            <div class="brand-icon"><i class="fa-solid fa-wpforms"></i></div>
+        <a class="navbar-brand d-flex align-items-center gap-2" >
             <span class="brand-name"><?php echo SITENAME; ?></span>
         </a>
 

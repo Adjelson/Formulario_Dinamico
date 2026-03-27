@@ -89,25 +89,25 @@
                            class="btn btn-sm btn-secondary">
                             <i class="fa-solid fa-rotate-right me-1"></i> Preencher novamente
                         </a>--->
-                        <?php else: ?>
-                            <a href="<?php echo URLROOT; ?>/forms/<?php echo htmlspecialchars($form->slug); ?>"
-                                class="btn btn-primary btn-sm">
-                                <i class="fa-solid fa-arrow-right me-1"></i> Preencher
-                            </a>
-                        <?php endif; ?>
-                    </div>
+                    <?php else: ?>
+                        <a href="<?php echo URLROOT; ?>/forms/<?php echo htmlspecialchars($form->slug); ?>"
+                           class="btn btn-primary btn-sm">
+                            <i class="fa-solid fa-arrow-right me-1"></i> Preencher
+                        </a>
+                    <?php endif; ?>
                 </div>
+            </div>
             <?php endforeach; ?>
         </div>
     <?php endif; ?>
 </div>
 
 <script>
-    document.getElementById('searchForms').addEventListener('input', function() {
-        var q = this.value.toLowerCase();
-        document.querySelectorAll('#formsGrid .form-card').forEach(function(card) {
-            card.style.display = card.dataset.title.includes(q) ? '' : 'none';
-        });
+document.getElementById('searchForms').addEventListener('input', function() {
+    var q = this.value.toLowerCase();
+    document.querySelectorAll('#formsGrid .form-card').forEach(function(card) {
+        card.style.display = card.dataset.title.includes(q) ? '' : 'none';
     });
+});
 </script>
 <?php require_once APPROOT . '/app/views/layout/footer.php'; ?>

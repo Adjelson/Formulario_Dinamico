@@ -1,43 +1,35 @@
 <?php
 
-class Router
-{
+class Router {
     protected $routes = [];
     protected $params = [];
 
-    public function add($route, $params = [])
-    {
+    public function add($route, $params = []) {
         // 1. Escapar barras literais
         $route = str_replace('/', '\\/', $route);
 
         // 2. Converter {param:regex} -> regex customizado
         $route = preg_replace_callback(
             '/\{([a-z_-]+):([^}]+)\}/',
-            function ($m) {
-                return '(?P<' . $m[1] . '>' . $m[2] . ')';
-            },
+            function($m) { return '(?P<' . $m[1] . '>' . $m[2] . ')'; },
             $route
         );
 
         // 3. Converter {param} -> aceitar letras, números, hífen, underscore, ponto, %
         $route = preg_replace_callback(
             '/\{([a-z_-]+)\}/',
-            function ($m) {
-                return '(?P<' . $m[1] . '>[a-zA-Z0-9_.%\-]+)';
-            },
+            function($m) { return '(?P<' . $m[1] . '>[a-zA-Z0-9_.%\-]+)'; },
             $route
         );
 
         $this->routes['/^' . $route . '$/i'] = $params;
     }
 
-    public function getRoutes()
-    {
+    public function getRoutes() {
         return $this->routes;
     }
 
-    public function match($url)
-    {
+    public function match($url) {
         foreach ($this->routes as $route => $params) {
             if (preg_match($route, $url, $matches)) {
                 foreach ($matches as $key => $match) {
@@ -52,8 +44,7 @@ class Router
         return false;
     }
 
-    public function dispatch($url)
-    {
+    public function dispatch($url) {
         if ($this->match($url)) {
             $controller      = $this->convertToStudlyCaps($this->params['controller']);
             $controllerClass = $controller . 'Controller';
@@ -85,18 +76,17 @@ class Router
             }
 
             $controller_object->$action();
+
         } else {
             throw new Exception('Nenhuma rota correspondeu.', 404);
         }
     }
 
-    protected function convertToStudlyCaps($string)
-    {
+    protected function convertToStudlyCaps($string) {
         return str_replace(' ', '', ucwords(str_replace('-', ' ', $string)));
     }
 
-    protected function convertToCamelCase($string)
-    {
+    protected function convertToCamelCase($string) {
         return lcfirst($this->convertToStudlyCaps($string));
     }
 }

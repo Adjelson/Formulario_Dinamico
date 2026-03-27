@@ -13,7 +13,11 @@
             <?php endif; ?>
         </p>
         <div class="d-flex gap-2 justify-content-center flex-wrap">
-           
+            <?php if (!empty($data['slug'])): ?>
+                <a href="<?php echo URLROOT; ?>/forms/<?php echo htmlspecialchars($data['slug']); ?>" class="btn btn-secondary btn-sm">
+                    <i class="fa-solid fa-rotate-right"></i> Submeter outra
+                </a>
+            <?php endif; ?>
             <a href="<?php echo URLROOT; ?>/my/history" class="btn btn-primary btn-sm">
                 <i class="fa-solid fa-clock-rotate-left"></i> Ver Histórico
             </a>
