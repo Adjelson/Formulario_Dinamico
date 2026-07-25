@@ -1,81 +1,117 @@
 <?php
 
-class Database {
-    private $host = DB_HOST;
-    private $user = DB_USER;
-    private $pass = DB_PASS;
-    private $dbname = DB_NAME;
+class Database
+{
+    private static ?PDO $pdo = null;
+    private PDOStatement $stmt;
 
-    private $dbh;
-    private $stmt;
-    private $error;
+    public function __construct()
+    {
+        $this->connection();
+    }
 
-    public function __construct(){
-        // Set DSN
-        $dsn = 'mysql:host=' . $this->host . ';dbname=' . $this->dbname;
-        $options = array(
-            PDO::ATTR_PERSISTENT => true,
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
+    public function connection(): PDO
+    {
+        if (self::$pdo instanceof PDO) {
+            return self::$pdo;
+        }
+
+        $dsn = sprintf(
+            'mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4',
+            DB_HOST,
+            DB_PORT,
+            DB_NAME
         );
 
-        // Create PDO instance
-        try{
-            $this->dbh = new PDO($dsn, $this->user, $this->pass, $options);
-        } catch(PDOException $e){
-            $this->error = $e->getMessage();
-            echo $this->error;
+        $options = [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_OBJ,
+            PDO::ATTR_EMULATE_PREPARES => false,
+            PDO::ATTR_PERSISTENT => DB_PERSISTENT,
+        ];
+        if (defined('PDO::MYSQL_ATTR_INIT_COMMAND')) {
+            $options[PDO::MYSQL_ATTR_INIT_COMMAND] = "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci";
+        }
+
+        try {
+            self::$pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
+            return self::$pdo;
+        } catch (PDOException $e) {
+            error_log('[Database] ' . $e->getMessage());
+            throw new RuntimeException('Não foi possível ligar à base de dados. Confirme o ficheiro .env e se o MySQL está ativo.', 0, $e);
         }
     }
 
-    // Prepare statement with query
-    public function query($sql){
-        $this->stmt = $this->dbh->prepare($sql);
+    public function query(string $sql): self
+    {
+        $this->stmt = $this->connection()->prepare($sql);
+        return $this;
     }
 
-    // Bind values
-    public function bind($param, $value, $type = null){
-        if(is_null($type)){
-            switch (true) {
-                case is_int($value):
-                    $type = PDO::PARAM_INT;
-                    break;
-                case is_bool($value):
-                    $type = PDO::PARAM_BOOL;
-                    break;
-                case is_null($value):
-                    $type = PDO::PARAM_NULL;
-                    break;
-                default:
-                    $type = PDO::PARAM_STR;
-            }
+    public function bind(string|int $param, mixed $value, ?int $type = null): self
+    {
+        if ($type === null) {
+            $type = match (true) {
+                is_int($value) => PDO::PARAM_INT,
+                is_bool($value) => PDO::PARAM_BOOL,
+                $value === null => PDO::PARAM_NULL,
+                default => PDO::PARAM_STR,
+            };
         }
         $this->stmt->bindValue($param, $value, $type);
+        return $this;
     }
 
-    // Execute the prepared statement
-    public function execute(){
+    public function execute(): bool
+    {
         return $this->stmt->execute();
     }
 
-    // Get result set as array of objects
-    public function resultSet(){
+    public function resultSet(): array
+    {
         $this->execute();
-        return $this->stmt->fetchAll(PDO::FETCH_OBJ);
+        return $this->stmt->fetchAll();
     }
 
-    // Get single record as object
-    public function single(){
+    public function single(): object|false
+    {
         $this->execute();
-        return $this->stmt->fetch(PDO::FETCH_OBJ);
+        return $this->stmt->fetch();
     }
 
-    // Get row count
-    public function rowCount(){
+    public function rowCount(): int
+    {
         return $this->stmt->rowCount();
     }
 
-    // Get last inserted ID
-    public function lastInsertId(){
-        return $this->dbh->lastInsertId();
+    public function lastInsertId(): string
+    {
+        return $this->connection()->lastInsertId();
+    }
+
+    public function beginTransaction(): void
+    {
+        if (!$this->connection()->inTransaction()) {
+            $this->connection()->beginTransaction();
+        }
+    }
+
+    public function commit(): void
+    {
+        if ($this->connection()->inTransaction()) {
+            $this->connection()->commit();
+        }
+    }
+
+    public function rollBack(): void
+    {
+        if ($this->connection()->inTransaction()) {
+            $this->connection()->rollBack();
+        }
+    }
+
+    public function inTransaction(): bool
+    {
+        return $this->connection()->inTransaction();
     }
 }

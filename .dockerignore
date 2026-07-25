@@ -1,0 +1,11 @@
+.git
+.gitignore
+.env
+storage/uploads/*
+storage/covers/*
+storage/logs/*
+!storage/uploads/.gitkeep
+!storage/covers/.gitkeep
+!storage/logs/.gitkeep
+imagemparaReadme
+*.zip

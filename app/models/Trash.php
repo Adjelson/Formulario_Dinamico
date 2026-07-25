@@ -1,79 +1,71 @@
 <?php
 
-/**
- * Trash Model — Arquivo de dados eliminados
- * Todos os registos eliminados são guardados aqui antes de serem removidos da BD principal.
- * Nunca se perdem dados.
- */
-class Trash extends Model {
-
-    /**
-     * Arquiva um formulário e todas as suas perguntas antes de eliminar.
-     */
-    public function archiveForm($form, $questions, $deletedBy) {
-        $originalData = json_encode([
-            'form'      => $form,
-            'questions' => $questions,
-        ]);
-
-        $this->db->query(
-            'INSERT INTO forms_trash (original_id, user_id, title, description, slug, status, cover_image, original_data, deleted_by)
-             VALUES (:oid, :uid, :title, :desc, :slug, :status, :cover, :data, :by)'
-        );
-        $this->db->bind(':oid',    $form->id);
-        $this->db->bind(':uid',    $form->user_id ?? null);
-        $this->db->bind(':title',  $form->title);
-        $this->db->bind(':desc',   $form->description ?? null);
-        $this->db->bind(':slug',   $form->slug ?? null);
-        $this->db->bind(':status', $form->status ?? null);
-        $this->db->bind(':cover',  $form->cover_image ?? null);
-        $this->db->bind(':data',   $originalData);
-        $this->db->bind(':by',     $deletedBy);
-        return $this->db->execute();
+class Trash extends Model
+{
+    public function archiveForm(object $form, array $questions, int $deletedBy): bool
+    {
+        $originalData = json_encode(['form' => $form, 'questions' => $questions], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return $this->db->query(
+            'INSERT INTO forms_trash
+             (original_id, user_id, title, description, slug, status, cover_image, original_data, deleted_by)
+             VALUES (:oid, :uid, :title, :description, :slug, :status, :cover, :data, :deleted_by)'
+        )->bind(':oid', $form->id)
+         ->bind(':uid', $form->user_id ?? null)
+         ->bind(':title', $form->title)
+         ->bind(':description', $form->description ?? null)
+         ->bind(':slug', $form->slug ?? null)
+         ->bind(':status', $form->status ?? null)
+         ->bind(':cover', $form->cover_image ?? null)
+         ->bind(':data', $originalData)
+         ->bind(':deleted_by', $deletedBy)
+         ->execute();
     }
 
-    /**
-     * Arquiva uma resposta e todas as suas answers antes de eliminar.
-     */
-    public function archiveResponse($response, $answers, $deletedBy) {
-        $this->db->query(
-            'INSERT INTO responses_trash (original_id, form_id, user_id, submitted_at, ip_address, answers_json, deleted_by)
-             VALUES (:oid, :fid, :uid, :sat, :ip, :answers, :by)'
-        );
-        $this->db->bind(':oid',     $response->id);
-        $this->db->bind(':fid',     $response->form_id ?? null);
-        $this->db->bind(':uid',     $response->user_id ?? null);
-        $this->db->bind(':sat',     $response->submitted_at ?? null);
-        $this->db->bind(':ip',      $response->ip_address ?? null);
-        $this->db->bind(':answers', json_encode($answers));
-        $this->db->bind(':by',      $deletedBy);
-        return $this->db->execute();
+    public function archiveQuestion(object $question, int $deletedBy): bool
+    {
+        return $this->db->query(
+            'INSERT INTO questions_trash
+             (original_id, form_id, label, type, is_required, order_index, config, original_data, deleted_by)
+             VALUES (:oid, :form_id, :label, :type, :required, :order_index, :config, :data, :deleted_by)'
+        )->bind(':oid', $question->id)
+         ->bind(':form_id', $question->form_id)
+         ->bind(':label', $question->label)
+         ->bind(':type', $question->type)
+         ->bind(':required', $question->is_required)
+         ->bind(':order_index', $question->order_index)
+         ->bind(':config', $question->config)
+         ->bind(':data', json_encode($question, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR))
+         ->bind(':deleted_by', $deletedBy)
+         ->execute();
     }
 
-    /**
-     * Arquiva um utilizador antes de eliminar.
-     */
-    public function archiveUser($user, $deletedBy) {
-        $this->db->query(
+    public function archiveResponse(object $response, array $answers, int $deletedBy): bool
+    {
+        return $this->db->query(
+            'INSERT INTO responses_trash
+             (original_id, form_id, user_id, submitted_at, ip_address, answers_json, deleted_by)
+             VALUES (:oid, :form_id, :user_id, :submitted_at, :ip, :answers, :deleted_by)'
+        )->bind(':oid', $response->id)
+         ->bind(':form_id', $response->form_id ?? null)
+         ->bind(':user_id', $response->user_id ?? null)
+         ->bind(':submitted_at', $response->submitted_at ?? null)
+         ->bind(':ip', $response->ip_address ?? null)
+         ->bind(':answers', json_encode($answers, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR))
+         ->bind(':deleted_by', $deletedBy)
+         ->execute();
+    }
+
+    public function archiveUser(object $user, int $deletedBy): bool
+    {
+        return $this->db->query(
             'INSERT INTO users_trash (original_id, name, email, role, original_data, deleted_by)
-             VALUES (:oid, :name, :email, :role, :data, :by)'
-        );
-        $this->db->bind(':oid',   $user->id);
-        $this->db->bind(':name',  $user->name);
-        $this->db->bind(':email', $user->email);
-        $this->db->bind(':role',  $user->role);
-        $this->db->bind(':data',  json_encode($user));
-        $this->db->bind(':by',    $deletedBy);
-        return $this->db->execute();
-    }
-
-    public function getFormTrash() {
-        $this->db->query('SELECT * FROM forms_trash ORDER BY deleted_at DESC');
-        return $this->db->resultSet();
-    }
-
-    public function getResponseTrash() {
-        $this->db->query('SELECT * FROM responses_trash ORDER BY deleted_at DESC');
-        return $this->db->resultSet();
+             VALUES (:oid, :name, :email, :role, :data, :deleted_by)'
+        )->bind(':oid', $user->id)
+         ->bind(':name', $user->name)
+         ->bind(':email', $user->email)
+         ->bind(':role', $user->role)
+         ->bind(':data', json_encode($user, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR))
+         ->bind(':deleted_by', $deletedBy)
+         ->execute();
     }
 }

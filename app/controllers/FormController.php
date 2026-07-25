@@ -1,329 +1,405 @@
 <?php
 
-class FormController extends Controller {
+class FormController extends Controller
+{
+    private Form $formModel;
+    private Question $questionModel;
+    private User $userModel;
+    private Audit $auditModel;
 
-    protected $formModel;
-    protected $questionModel;
-    protected $userModel;
-
-    public function __construct($params = []) {
+    public function __construct(array $params = [])
+    {
         parent::__construct($params);
-        $this->formModel     = $this->model("Form");
-        $this->questionModel = $this->model("Question");
-        $this->userModel     = $this->model("User");
+        $this->formModel = $this->model('Form');
+        $this->questionModel = $this->model('Question');
+        $this->userModel = $this->model('User');
+        $this->auditModel = $this->model('Audit');
     }
 
-    public function dashboard() {
-        if (!isset($_SESSION["user_id"]) || $_SESSION["user_role"] != "admin") {
-            header("location:" . URLROOT . "/login"); exit();
-        }
-        $this->view("admin/dashboard", [
-            "totalForms"     => $this->formModel->getTotalForms(),
-            "totalResponses" => $this->model("Response")->getTotalResponses(),
-            "activeUsers"    => count($this->userModel->findAll("users")),
-            "recentForms"    => $this->formModel->getRecentForms(5),
+    public function dashboard(): void
+    {
+        $this->requireAdmin();
+        $this->view('admin/dashboard', [
+            'totalForms' => $this->formModel->getTotalForms(),
+            'totalResponses' => $this->model('Response')->getTotalResponses(),
+            'activeUsers' => $this->userModel->countActiveUsers(),
+            'recentForms' => $this->formModel->getRecentForms(5),
         ]);
     }
 
-    public function index() {
-        if (!isset($_SESSION["user_id"]) || $_SESSION["user_role"] != "admin") {
-            header("location:" . URLROOT . "/login"); exit();
-        }
-        $this->view("admin/forms/index", ["forms" => $this->formModel->getForms()]);
+    public function index(): void
+    {
+        $this->requireAdmin();
+        $this->view('admin/forms/index', ['forms' => $this->formModel->getForms()]);
     }
 
-    public function create() {
-        if (!isset($_SESSION["user_id"]) || $_SESSION["user_role"] != "admin") {
-            header("location:" . URLROOT . "/login"); exit();
-        }
-        $this->view("admin/forms/create", [
-            "title" => "", "description" => "", "status" => "draft",
-            "cover_image" => null, "questions" => [], "title_err" => "",
+    public function create(): void
+    {
+        $this->requireAdmin();
+        $this->view('admin/forms/create', [
+            'title' => '', 'description' => '', 'status' => 'draft',
+            'cover_image' => null, 'questions' => [], 'title_err' => '', 'general_err' => '',
         ]);
     }
 
-    public function store() {
-        if (!isset($_SESSION["user_id"]) || $_SESSION["user_role"] != "admin") {
-            header("location:" . URLROOT . "/login"); exit();
+    public function store(): void
+    {
+        $this->requireAdmin();
+        $this->requirePost();
+        $this->verifyCsrf();
+
+        $data = $this->formInput();
+        [$questions, $questionError] = $this->normaliseQuestions($_POST['questions'] ?? []);
+        $data['questions'] = $questions;
+
+        if ($data['title_err'] !== '' || $questionError !== '') {
+            $data['general_err'] = $questionError;
+            $this->view('admin/forms/create', $data);
+            return;
         }
-        if ($_SERVER["REQUEST_METHOD"] == "POST") {
-            $title = trim(strip_tags($_POST["title"] ?? ''));
 
-            // Processar upload da imagem de capa
-            $coverImage = $this->processCoverUpload();
+        $newCover = null;
+        try {
+            $newCover = $this->processCoverUpload();
+            $data['cover_image'] = $newCover;
+            $data['slug'] = $this->formModel->uniqueSlug($this->slugify($data['title']));
 
-            $data = [
-                "user_id"     => $_SESSION["user_id"],
-                "title"       => $title,
-                "description" => trim(strip_tags($_POST["description"] ?? '')),
-                "slug"        => $this->slugify($title),
-                "status"      => trim($_POST["status"] ?? 'draft'),
-                "cover_image" => $coverImage,
-                "questions"   => $_POST["questions"] ?? [],
-                "title_err"   => "",
-            ];
+            $this->formModel->beginTransaction();
+            $formId = $this->formModel->createForm($data + ['user_id' => (int) $_SESSION['user_id']]);
+            $this->questionModel->syncQuestions($formId, $questions);
+            $this->formModel->commit();
 
-            if (empty($data["title"])) {
-                $data["title_err"] = "Por favor, insira o título do formulário.";
-                $this->view("admin/forms/create", $data);
-                return;
+            $this->auditModel->log('form.create', 'form', $formId, ['status' => $data['status']]);
+            flash_set('success', 'Formulário criado com sucesso.');
+            $this->redirect('admin/forms');
+        } catch (Throwable $e) {
+            $this->formModel->rollBack();
+            if ($newCover) {
+                $this->deleteCoverFile($newCover);
             }
-
-            $formId = $this->formModel->createForm($data);
-            if ($formId) {
-                foreach ($data["questions"] as $i => $q) {
-                    $this->questionModel->addQuestion([
-                        "form_id"     => $formId,
-                        "label"       => $q["label"],
-                        "type"        => $q["type"],
-                        "is_required" => isset($q["is_required"]) ? 1 : 0,
-                        "order_index" => $i,
-                        "config"      => isset($q["config"]) ? json_encode($q["config"]) : null,
-                    ]);
-                }
-                header("location:" . URLROOT . "/admin/forms"); exit();
-            }
-            die("Erro ao criar o formulário.");
+            error_log('[Form store] ' . $e->getMessage());
+            $data['general_err'] = $e instanceof InvalidArgumentException
+                ? $e->getMessage()
+                : 'Não foi possível criar o formulário. Verifique os dados e tente novamente.';
+            $this->view('admin/forms/create', $data);
         }
     }
 
-    public function edit() {
-        if (!isset($_SESSION["user_id"]) || $_SESSION["user_role"] != "admin") {
-            header("location:" . URLROOT . "/login"); exit();
+    public function edit(): void
+    {
+        $this->requireAdmin();
+        $id = (int) ($this->params['id'] ?? 0);
+        $form = $this->formModel->getFormById($id);
+        if (!$form) {
+            flash_set('danger', 'Formulário não encontrado.');
+            $this->redirect('admin/forms');
         }
-        $id   = $this->params["id"] ?? null;
-        $form = $id ? $this->formModel->getFormById($id) : null;
-        if (!$form) { header("location:" . URLROOT . "/admin/forms"); exit(); }
 
-        $this->view("admin/forms/edit", [
-            "id"           => $form->id,
-            "title"        => $form->title,
-            "description"  => $form->description,
-            "status"       => $form->status,
-            "cover_image"  => $form->cover_image ?? null,
-            "questions"    => $this->questionModel->getQuestionsByFormId($id),
-            "title_err"    => "",
+        $this->view('admin/forms/edit', [
+            'id' => (int) $form->id,
+            'title' => $form->title,
+            'description' => $form->description,
+            'status' => $form->status,
+            'cover_image' => $form->cover_image,
+            'questions' => $this->questionModel->getQuestionsByFormId($id),
+            'title_err' => '', 'general_err' => '',
         ]);
     }
 
-    public function update() {
-        if (!isset($_SESSION["user_id"]) || $_SESSION["user_role"] != "admin") {
-            header("location:" . URLROOT . "/login"); exit();
+    public function update(): void
+    {
+        $this->requireAdmin();
+        $this->requirePost();
+        $this->verifyCsrf();
+
+        $id = (int) ($this->params['id'] ?? 0);
+        $existingForm = $this->formModel->getFormById($id);
+        if (!$existingForm) {
+            flash_set('danger', 'Formulário não encontrado.');
+            $this->redirect('admin/forms');
         }
-        $id = $this->params["id"] ?? null;
-        if (!$id) { header("location:" . URLROOT . "/admin/forms"); exit(); }
 
-        if ($_SERVER["REQUEST_METHOD"] == "POST") {
-            $title = trim(strip_tags($_POST["title"] ?? ''));
+        $data = $this->formInput();
+        $data['id'] = $id;
+        [$questions, $questionError] = $this->normaliseQuestions($_POST['questions'] ?? []);
+        $data['questions'] = $questions;
+        $data['cover_image'] = $existingForm->cover_image;
 
-            // Obter capa actual do formulário
-            $existingForm = $this->formModel->getFormById($id);
-            $currentCover = $existingForm->cover_image ?? null;
+        if ($data['title_err'] !== '' || $questionError !== '') {
+            $data['general_err'] = $questionError;
+            $data['cover_image'] = $existingForm->cover_image;
+            $this->view('admin/forms/edit', $data);
+            return;
+        }
 
-            // Processar novo upload (se existir), senão manter o actual
-            // Se o checkbox "remover capa" estiver marcado, apagar
-            if (isset($_POST['remove_cover']) && $_POST['remove_cover'] == '1') {
-                $this->deleteCoverFile($currentCover);
-                $coverImage = null;
-            } else {
-                $newCover = $this->processCoverUpload();
-                if ($newCover) {
-                    // Apagar capa antiga ao substituir
-                    $this->deleteCoverFile($currentCover);
-                    $coverImage = $newCover;
-                } else {
-                    $coverImage = $currentCover; // manter a existente
+        $uploadedCover = null;
+        $deleteOldAfterCommit = false;
+        try {
+            $removeCover = ($_POST['remove_cover'] ?? '') === '1';
+            $uploadedCover = $this->processCoverUpload();
+            if ($uploadedCover !== null) {
+                $data['cover_image'] = $uploadedCover;
+                $deleteOldAfterCommit = !empty($existingForm->cover_image);
+            } elseif ($removeCover) {
+                $data['cover_image'] = null;
+                $deleteOldAfterCommit = !empty($existingForm->cover_image);
+            }
+
+            $data['slug'] = $this->formModel->uniqueSlug($this->slugify($data['title']), $id);
+
+            $existingQuestions = $this->questionModel->getQuestionsByFormId($id);
+            $submittedIds = array_values(array_filter(array_map(
+                static fn(array $q): int => (int) ($q['id'] ?? 0),
+                $questions
+            )));
+
+            $this->formModel->beginTransaction();
+            $trash = $this->model('Trash');
+            foreach ($existingQuestions as $oldQuestion) {
+                if (!in_array((int) $oldQuestion->id, $submittedIds, true)) {
+                    $trash->archiveQuestion($oldQuestion, (int) $_SESSION['user_id']);
                 }
             }
 
-            $data = [
-                "id"          => $id,
-                "title"       => $title,
-                "description" => trim(strip_tags($_POST["description"] ?? '')),
-                "slug"        => $this->slugify($title),
-                "status"      => trim($_POST["status"] ?? 'draft'),
-                "cover_image" => $coverImage,
-                "questions"   => $_POST["questions"] ?? [],
-                "title_err"   => "",
-            ];
+            $this->formModel->updateForm($data);
+            $this->questionModel->syncQuestions($id, $questions);
+            $this->formModel->commit();
 
-            if (empty($data["title"])) {
-                $data["title_err"] = "Por favor, insira o título do formulário.";
-                $data["questions"] = $this->questionModel->getQuestionsByFormId($id);
-                $this->view("admin/forms/edit", $data);
-                return;
+            if ($deleteOldAfterCommit && !empty($existingForm->cover_image)) {
+                $this->deleteCoverFile($existingForm->cover_image);
             }
-
-            if ($this->formModel->updateForm($data)) {
-                $this->questionModel->deleteQuestionsByFormId($id);
-                foreach ($data["questions"] as $i => $q) {
-                    $this->questionModel->addQuestion([
-                        "form_id"     => $id,
-                        "label"       => $q["label"],
-                        "type"        => $q["type"],
-                        "is_required" => isset($q["is_required"]) ? 1 : 0,
-                        "order_index" => $i,
-                        "config"      => isset($q["config"]) ? json_encode($q["config"]) : null,
-                    ]);
-                }
-                header("location:" . URLROOT . "/admin/forms"); exit();
+            $this->auditModel->log('form.update', 'form', $id, ['status' => $data['status']]);
+            flash_set('success', 'Formulário atualizado com sucesso.');
+            $this->redirect('admin/forms');
+        } catch (Throwable $e) {
+            $this->formModel->rollBack();
+            if ($uploadedCover) {
+                $this->deleteCoverFile($uploadedCover);
             }
-            die("Erro ao atualizar o formulário.");
+            error_log('[Form update] ' . $e->getMessage());
+            $data['general_err'] = $e instanceof InvalidArgumentException
+                ? $e->getMessage()
+                : 'Não foi possível atualizar o formulário.';
+            $data['cover_image'] = $existingForm->cover_image;
+            $this->view('admin/forms/edit', $data);
         }
     }
 
-    public function delete() {
-        if (!isset($_SESSION["user_id"]) || $_SESSION["user_role"] != "admin") {
-            header("location:" . URLROOT . "/login"); exit();
-        }
-        $id = $this->params["id"] ?? null;
-        if (!$id) { header("location:" . URLROOT . "/admin/forms"); exit(); }
+    public function delete(): void
+    {
+        $this->requireAdmin();
+        $this->requirePost();
+        $this->verifyCsrf();
 
-        if ($_SERVER["REQUEST_METHOD"] == "POST") {
-            $form      = $this->formModel->getFormById($id);
+        $id = (int) ($this->params['id'] ?? 0);
+        $form = $this->formModel->getFormById($id);
+        if (!$form) {
+            flash_set('danger', 'Formulário não encontrado.');
+            $this->redirect('admin/forms');
+        }
+
+        $this->formModel->beginTransaction();
+        try {
             $questions = $this->questionModel->getQuestionsByFormId($id);
+            $responses = $this->model('Response')->getResponsesByFormId($id);
+            $answerModel = $this->model('Answer');
+            $trash = $this->model('Trash');
 
-            // Arquivar na tabela de rascunho antes de eliminar
-            $trash = $this->model("Trash");
-            $trash->archiveForm($form, $questions, $_SESSION["user_id"]);
-
-            // Manter imagem de capa no disco (dados arquivados, nunca apagar)
-            if ($this->formModel->deleteForm($id)) {
-                header("location:" . URLROOT . "/admin/forms"); exit();
+            $trash->archiveForm($form, $questions, (int) $_SESSION['user_id']);
+            foreach ($questions as $question) {
+                $trash->archiveQuestion($question, (int) $_SESSION['user_id']);
             }
-            die("Erro ao eliminar o formulário.");
+            foreach ($responses as $response) {
+                $trash->archiveResponse(
+                    $response,
+                    $answerModel->getAnswersByResponseId((int) $response->id),
+                    (int) $_SESSION['user_id']
+                );
+            }
+
+            $this->formModel->deleteForm($id);
+            $this->formModel->commit();
+            $this->auditModel->log('form.delete', 'form', $id, ['responses_archived' => count($responses)]);
+            flash_set('success', 'Formulário e respetivas respostas foram arquivados antes da remoção.');
+        } catch (Throwable $e) {
+            $this->formModel->rollBack();
+            error_log('[Form delete] ' . $e->getMessage());
+            flash_set('danger', 'Não foi possível eliminar o formulário. Nenhuma alteração parcial foi guardada.');
         }
+        $this->redirect('admin/forms');
     }
 
-    public function show() {
-        $slug = $this->params["slug"] ?? null;
-        if (!$slug) { header("location:" . URLROOT . "/login"); exit(); }
-
-        $form = $this->formModel->getFormBySlug($slug);
-        if (!$form || $form->status != "published") {
+    public function show(): void
+    {
+        $slug = (string) ($this->params['slug'] ?? '');
+        $form = $slug !== '' ? $this->formModel->getFormBySlug($slug) : false;
+        if (!$form || $form->status !== 'published') {
             http_response_code(404);
-            die("Este formulário não está disponível.");
+            throw new RuntimeException('Este formulário não está disponível.', 404);
         }
 
-        if (!isset($_SESSION["user_id"])) {
-            $redirect = urlencode("forms/" . $slug);
-            header("location:" . URLROOT . "/register?redirect=" . $redirect);
-            exit();
+        if (empty($_SESSION['user_id'])) {
+            header('Location: ' . URLROOT . '/register?redirect=' . urlencode('forms/' . $slug));
+            exit;
         }
 
-        $this->view("public/form_fill", [
-            "form"       => $form,
-            "questions"  => $this->questionModel->getQuestionsByFormId($form->id),
-            "admin_view" => ($_SESSION["user_role"] == "admin"),
+        $existingResponse = false;
+        $previousAnswers = [];
+        if (($_SESSION['user_role'] ?? '') !== 'admin') {
+            $responseModel = $this->model('Response');
+            $existingResponse = $responseModel->getUserResponseForForm((int) $_SESSION['user_id'], (int) $form->id);
+            if ($existingResponse) {
+                $previousAnswers = $this->model('Answer')->getAnswersByResponseId((int) $existingResponse->id);
+            }
+        }
+
+        $this->view('public/form_fill', [
+            'form' => $form,
+            'questions' => $this->questionModel->getQuestionsByFormId((int) $form->id),
+            'admin_view' => ($_SESSION['user_role'] ?? '') === 'admin',
+            'existing_response' => $existingResponse,
+            'previous_answers' => $previousAnswers,
         ]);
     }
 
-    // ── Upload de capa ───────────────────────────────────────────────────
-    // ── Upload e redimensionamento da imagem de capa ─────────────────────
-    // Dimensão final: 800×400px, crop centrado, guardado como JPEG qualidade 85
-    private function processCoverUpload() {
-        if (!isset($_FILES['cover_image']) || $_FILES['cover_image']['error'] == UPLOAD_ERR_NO_FILE) {
+    private function formInput(): array
+    {
+        $title = trim((string) ($_POST['title'] ?? ''));
+        $description = trim((string) ($_POST['description'] ?? ''));
+        $status = in_array($_POST['status'] ?? '', ['draft', 'published', 'closed'], true)
+            ? $_POST['status']
+            : 'draft';
+
+        return [
+            'title' => text_substr($title, 0, 255),
+            'description' => text_substr($description, 0, 10000),
+            'status' => $status,
+            'slug' => '', 'cover_image' => null,
+            'title_err' => $title === '' ? 'Introduza o título do formulário.' : '',
+            'general_err' => '',
+        ];
+    }
+
+    private function normaliseQuestions(mixed $rawQuestions): array
+    {
+        if (!is_array($rawQuestions) || $rawQuestions === []) {
+            return [[], 'Adicione pelo menos uma pergunta ao formulário.'];
+        }
+        if (count($rawQuestions) > MAX_QUESTIONS_PER_FORM) {
+            return [[], 'O formulário excede o limite de ' . MAX_QUESTIONS_PER_FORM . ' perguntas.'];
+        }
+
+        $allowedTypes = ['short_text', 'long_text', 'numeric', 'date', 'checkbox', 'radio', 'upload'];
+        $result = [];
+        foreach (array_values($rawQuestions) as $index => $raw) {
+            if (!is_array($raw)) {
+                return [[], 'Existe uma pergunta com estrutura inválida.'];
+            }
+            $label = trim((string) ($raw['label'] ?? ''));
+            $type = (string) ($raw['type'] ?? 'short_text');
+            if ($label === '' || text_length($label) > 500) {
+                return [[], 'A pergunta ' . ($index + 1) . ' deve ter um texto válido com até 500 caracteres.'];
+            }
+            if (!in_array($type, $allowedTypes, true)) {
+                return [[], 'O tipo da pergunta ' . ($index + 1) . ' é inválido.'];
+            }
+
+            $config = is_array($raw['config'] ?? null) ? $raw['config'] : [];
+            $cleanConfig = [];
+            if (in_array($type, ['checkbox', 'radio'], true)) {
+                $options = array_values(array_unique(array_filter(array_map(
+                    static fn($v): string => text_substr(trim((string) $v), 0, 200),
+                    is_array($config['options'] ?? null) ? $config['options'] : []
+                ), static fn(string $v): bool => $v !== '')));
+                if (count($options) < 2) {
+                    return [[], 'A pergunta “' . $label . '” precisa de pelo menos duas opções.'];
+                }
+                $cleanConfig['options'] = array_slice($options, 0, 50);
+            } elseif ($type === 'upload') {
+                $allowed = array_values(array_intersect(
+                    is_array($config['allowed_types'] ?? null) ? $config['allowed_types'] : [],
+                    ['pdf', 'png', 'jpeg']
+                ));
+                $cleanConfig['allowed_types'] = $allowed !== [] ? $allowed : ['pdf'];
+            } elseif ($type === 'date') {
+                foreach (['date_min', 'date_max'] as $key) {
+                    $value = trim((string) ($config[$key] ?? ''));
+                    if ($value !== '' && !$this->validDate($value)) {
+                        return [[], 'O intervalo da pergunta “' . $label . '” contém uma data inválida.'];
+                    }
+                    if ($value !== '') {
+                        $cleanConfig[$key] = $value;
+                    }
+                }
+                if (isset($cleanConfig['date_min'], $cleanConfig['date_max']) && $cleanConfig['date_min'] > $cleanConfig['date_max']) {
+                    return [[], 'Na pergunta “' . $label . '”, a data mínima não pode ser posterior à data máxima.'];
+                }
+            }
+
+            $result[] = [
+                'id' => isset($raw['id']) ? (int) $raw['id'] : 0,
+                'label' => $label,
+                'type' => $type,
+                'is_required' => isset($raw['is_required']) ? 1 : 0,
+                'config' => json_encode($cleanConfig, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
+            ];
+        }
+        return [$result, ''];
+    }
+
+    private function processCoverUpload(): ?string
+    {
+        if (!isset($_FILES['cover_image']) || $_FILES['cover_image']['error'] === UPLOAD_ERR_NO_FILE) {
             return null;
         }
         $file = $_FILES['cover_image'];
-        if ($file['error'] !== UPLOAD_ERR_OK) return null;
-
-        // Validar MIME real
-        $finfo    = new finfo(FILEINFO_MIME_TYPE);
-        $mimeType = $finfo->file($file['tmp_name']);
-        $allowed  = ['image/jpeg'=>'jpg','image/png'=>'png','image/gif'=>'gif','image/webp'=>'webp'];
-        if (!isset($allowed[$mimeType])) return null;
-
-        // Validar tamanho máx. do ficheiro original (5MB)
-        if ($file['size'] > 5 * 1024 * 1024) return null;
-
-        $coverDir = APPROOT . DIRECTORY_SEPARATOR . 'storage' . DIRECTORY_SEPARATOR . 'covers';
-        if (!is_dir($coverDir)) mkdir($coverDir, 0750, true);
-
-        // Tentar redimensionar com GD (disponível no XAMPP por defeito)
-        if (extension_loaded('gd')) {
-            $newFileName = uniqid('cover_') . '.jpg'; // sempre JPG após resize
-            $dest        = $coverDir . DIRECTORY_SEPARATOR . $newFileName;
-            if ($this->resizeCoverImage($file['tmp_name'], $mimeType, $dest, 800, 400)) {
-                return $newFileName;
-            }
+        if ($file['error'] !== UPLOAD_ERR_OK) {
+            throw new InvalidArgumentException('O upload da imagem de capa falhou.');
+        }
+        if ((int) $file['size'] > MAX_COVER_SIZE) {
+            throw new InvalidArgumentException('A imagem de capa não pode exceder 2 MB.');
         }
 
-        // Fallback sem GD: mover ficheiro original sem redimensionar
-        $ext         = $allowed[$mimeType];
-        $newFileName = uniqid('cover_') . '.' . $ext;
-        $dest        = $coverDir . DIRECTORY_SEPARATOR . $newFileName;
-        if (move_uploaded_file($file['tmp_name'], $dest)) return $newFileName;
-
-        return null;
-    }
-
-    /**
-     * Redimensiona para exactamente $targetW x $targetH com crop centrado.
-     * Mantém a proporção sem distorção (tipo CSS background-size: cover).
-     * Guarda como JPEG qualidade 85 para manter tamanho reduzido.
-     */
-    private function resizeCoverImage($srcPath, $mimeType, $destPath, $targetW, $targetH) {
-        $src = null;
-        switch ($mimeType) {
-            case 'image/jpeg': $src = @imagecreatefromjpeg($srcPath); break;
-            case 'image/png':  $src = @imagecreatefrompng($srcPath);  break;
-            case 'image/gif':  $src = @imagecreatefromgif($srcPath);  break;
-            case 'image/webp': $src = function_exists('imagecreatefromwebp') ? @imagecreatefromwebp($srcPath) : null; break;
+        $mime = (new finfo(FILEINFO_MIME_TYPE))->file($file['tmp_name']);
+        $extensions = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
+        if (!isset($extensions[$mime])) {
+            throw new InvalidArgumentException('A capa deve ser JPG, PNG ou WEBP.');
         }
-        if (!$src) return false;
-
-        $srcW = imagesx($src);
-        $srcH = imagesy($src);
-
-        // Calcular crop centrado (cover fit)
-        $srcRatio = $srcW / $srcH;
-        $tgtRatio = $targetW / $targetH;
-
-        if ($srcRatio > $tgtRatio) {
-            // Imagem mais larga — cortar laterais
-            $cropH = $srcH;
-            $cropW = (int)round($srcH * $tgtRatio);
-            $cropX = (int)round(($srcW - $cropW) / 2);
-            $cropY = 0;
-        } else {
-            // Imagem mais alta — cortar topo/base
-            $cropW = $srcW;
-            $cropH = (int)round($srcW / $tgtRatio);
-            $cropX = 0;
-            $cropY = (int)round(($srcH - $cropH) / 2);
+        if (!is_dir(COVER_DIR) && !mkdir(COVER_DIR, 0750, true) && !is_dir(COVER_DIR)) {
+            throw new RuntimeException('Não foi possível criar a pasta de capas.');
         }
 
-        // Canvas de destino com fundo branco
-        $canvas = imagecreatetruecolor($targetW, $targetH);
-        $white  = imagecolorallocate($canvas, 255, 255, 255);
-        imagefill($canvas, 0, 0, $white);
-
-        // Redimensionar com qualidade
-        imagecopyresampled($canvas, $src, 0, 0, $cropX, $cropY, $targetW, $targetH, $cropW, $cropH);
-
-        // Guardar JPEG qualidade 85
-        $ok = imagejpeg($canvas, $destPath, 85);
-
-        imagedestroy($src);
-        imagedestroy($canvas);
-
-        return $ok;
+        $name = 'cover_' . bin2hex(random_bytes(16)) . '.' . $extensions[$mime];
+        if (!move_uploaded_file($file['tmp_name'], COVER_DIR . DIRECTORY_SEPARATOR . $name)) {
+            throw new RuntimeException('Não foi possível guardar a imagem de capa.');
+        }
+        return $name;
     }
 
-    private function deleteCoverFile($coverImage) {
-        if (empty($coverImage)) return;
-        $path = APPROOT . DIRECTORY_SEPARATOR . 'storage' . DIRECTORY_SEPARATOR . 'covers' . DIRECTORY_SEPARATOR . $coverImage;
-        if (file_exists($path)) unlink($path);
+    private function deleteCoverFile(?string $cover): void
+    {
+        if (!$cover || !preg_match('/^[a-zA-Z0-9_.-]+$/', $cover)) {
+            return;
+        }
+        $path = COVER_DIR . DIRECTORY_SEPARATOR . basename($cover);
+        if (is_file($path)) {
+            @unlink($path);
+        }
     }
 
-    private function slugify($text) {
-        $text = preg_replace("~[^\\pL\\d]+~u", "-", $text);
-        $text = iconv("utf-8", "us-ascii//TRANSLIT", $text);
-        $text = preg_replace("~[^\\w]+~", "-", $text);
-        $text = trim($text, "-");
-        $text = preg_replace("~-+~", "-", $text);
-        $text = strtolower($text);
-        return empty($text) ? "n-a" : $text;
+    private function slugify(string $text): string
+    {
+        $text = preg_replace('~[^\pL\d]+~u', '-', $text) ?? '';
+        $converted = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $text);
+        $text = $converted !== false ? $converted : $text;
+        $text = preg_replace('~[^\w-]+~', '', $text) ?? '';
+        $text = strtolower(trim(preg_replace('~-+~', '-', $text) ?? '', '-'));
+        return $text !== '' ? $text : 'formulario';
+    }
+
+    private function validDate(string $value): bool
+    {
+        $date = DateTimeImmutable::createFromFormat('!Y-m-d', $value);
+        return $date !== false && $date->format('Y-m-d') === $value;
     }
 }

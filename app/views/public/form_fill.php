@@ -6,8 +6,8 @@
         <div class="form-fill-header">
             <?php if (!empty($data['form']->cover_image)): ?>
                 <div class="form-cover-img-wrapper">
-                    <img src="<?php echo URLROOT . '/cover/' . urlencode($data['form']->cover_image); ?>"
-                        alt="<?php echo htmlspecialchars($data['form']->title); ?>"
+                    <img src="<?php echo e(URLROOT . '/cover/' . rawurlencode($data['form']->cover_image)); ?>"
+                        alt="Capa do formulário <?php echo e($data['form']->title); ?>"
                         class="form-cover-img">
                 </div>
             <?php else: ?>
@@ -35,7 +35,7 @@
 
         <!-- ── Corpo ────────────────────────────────────────────────── -->
         <div class="form-fill-body">
-            <div id="formAlert" class="df-alert df-alert-danger d-none mb-3">
+            <div id="formAlert" class="df-alert df-alert-danger d-none mb-3" role="alert" aria-live="assertive">
                 <i class="fa-solid fa-triangle-exclamation"></i>
                 <span>Preencha todos os campos obrigatórios antes de submeter.</span>
             </div>
@@ -78,13 +78,14 @@
                         <i class="fa-solid fa-eye me-1"></i> Ver a minha resposta
                     </a>
 
-                    <!-- Eliminar e preencher de novo
+                    <!-- Eliminar e preencher de novo -->
                     <form action="<?php echo URLROOT; ?>/forms/<?php echo $data['form']->slug; ?>/retract/<?php echo $resp->id; ?>"
                           method="POST" id="deleteOwnForm">
+                              <?php echo csrf_field(); ?>
                         <button type="button" class="btn btn-danger" onclick="confirmDeleteOwn()">
                             <i class="fa-solid fa-rotate-right me-1"></i> Eliminar e preencher novamente
                         </button>
-                    </form> -->
+                    </form>
                 </div>
 
                 <!-- Pré-visualização das respostas anteriores -->
@@ -103,7 +104,7 @@
                                         <?php echo htmlspecialchars(implode(', ', $vals ?: [])); ?>
                                     <?php elseif ($answer->question_type == 'upload'): ?>
                                         <i class="fa-solid fa-file me-1"></i>
-                                        <?php echo htmlspecialchars($answer->file_path ?? 'Ficheiro enviado'); ?>
+                                        <?php echo e($answer->original_file_name ?: 'Ficheiro enviado'); ?>
                                     <?php else: ?>
                                         <?php echo htmlspecialchars($answer->value ?? '—'); ?>
                                     <?php endif; ?>
@@ -133,6 +134,7 @@
 
                 <form action="<?php echo URLROOT; ?>/forms/<?php echo $data['form']->slug; ?>/submit"
                     method="POST" enctype="multipart/form-data" id="responseForm" novalidate>
+                        <?php echo csrf_field(); ?>
 
                     <?php foreach ($data['questions'] as $idx => $question):
                         $qConfig = json_decode($question->config ?? '{}');
@@ -141,8 +143,8 @@
 
                             <div class="qfill-label">
                                 <span class="qfill-num"><?php echo $idx + 1; ?></span>
-                                <span class="qfill-text">
-                                    <?php echo htmlspecialchars($question->label); ?>
+                                <span class="qfill-text" id="q-label-<?php echo (int) $question->id; ?>">
+                                    <?php echo e($question->label); ?>
                                     <?php if ($question->is_required): ?>
                                         <span class="qfill-required" title="Obrigatório">*</span>
                                     <?php endif; ?>
@@ -162,7 +164,7 @@
                             if (isset($hints[$question->type])):
                                 list($hIcon, $hText) = $hints[$question->type];
                             ?>
-                                <div class="qfill-hint">
+                                <div class="qfill-hint" id="q-hint-<?php echo (int) $question->id; ?>">
                                     <i class="fa-solid <?php echo $hIcon; ?>"></i>
                                     <?php echo $hText; ?>
                                 </div>
@@ -172,14 +174,16 @@
                                 <input type="text" class="form-control"
                                     id="question_<?php echo $question->id; ?>"
                                     name="question_<?php echo $question->id; ?>"
-                                    placeholder="A sua resposta aqui..."
+                                    aria-labelledby="q-label-<?php echo (int) $question->id; ?>" aria-describedby="q-hint-<?php echo (int) $question->id; ?> err-<?php echo (int) $question->id; ?>"
+                                    maxlength="500" placeholder="A sua resposta aqui..."
                                     <?php echo $question->is_required ? 'required' : ''; ?>>
 
                             <?php elseif ($question->type === 'long_text'): ?>
                                 <textarea class="form-control" rows="4"
                                     id="question_<?php echo $question->id; ?>"
                                     name="question_<?php echo $question->id; ?>"
-                                    placeholder="Escreva a sua resposta aqui..."
+                                    aria-labelledby="q-label-<?php echo (int) $question->id; ?>" aria-describedby="q-hint-<?php echo (int) $question->id; ?> err-<?php echo (int) $question->id; ?>"
+                                    maxlength="10000" placeholder="Escreva a sua resposta aqui..."
                                     <?php echo $question->is_required ? 'required' : ''; ?>></textarea>
 
                             <?php elseif ($question->type === 'numeric'): ?>
@@ -188,7 +192,8 @@
                                     <input type="number" class="form-control"
                                         id="question_<?php echo $question->id; ?>"
                                         name="question_<?php echo $question->id; ?>"
-                                        placeholder="0"
+                                        aria-labelledby="q-label-<?php echo (int) $question->id; ?>" aria-describedby="q-hint-<?php echo (int) $question->id; ?> err-<?php echo (int) $question->id; ?>"
+                                        inputmode="decimal" step="any" placeholder="0"
                                         <?php echo $question->is_required ? 'required' : ''; ?>>
                                 </div>
 
@@ -198,6 +203,7 @@
                                     <input type="date" class="form-control"
                                         id="question_<?php echo $question->id; ?>"
                                         name="question_<?php echo $question->id; ?>"
+                                        aria-labelledby="q-label-<?php echo (int) $question->id; ?>" aria-describedby="q-hint-<?php echo (int) $question->id; ?> err-<?php echo (int) $question->id; ?>"
                                         <?php if (!empty($qConfig->date_min)): ?>min="<?php echo htmlspecialchars($qConfig->date_min); ?>" <?php endif; ?>
                                         <?php if (!empty($qConfig->date_max)): ?>max="<?php echo htmlspecialchars($qConfig->date_max); ?>" <?php endif; ?>
                                         <?php echo $question->is_required ? 'required' : ''; ?>>
@@ -217,7 +223,7 @@
 
                             <?php elseif ($question->type === 'checkbox'): ?>
                                 <?php $opts = $qConfig->options ?? []; ?>
-                                <div class="qfill-options mt-1">
+                                <div class="qfill-options mt-1" role="group" aria-labelledby="q-label-<?php echo (int) $question->id; ?>" aria-describedby="q-hint-<?php echo (int) $question->id; ?> err-<?php echo (int) $question->id; ?>">
                                     <?php foreach ($opts as $option): ?>
                                         <label class="qfill-check-option">
                                             <input type="checkbox" name="question_<?php echo $question->id; ?>[]"
@@ -230,7 +236,7 @@
 
                             <?php elseif ($question->type === 'radio'): ?>
                                 <?php $opts = $qConfig->options ?? []; ?>
-                                <div class="qfill-options mt-1">
+                                <div class="qfill-options mt-1" role="radiogroup" aria-labelledby="q-label-<?php echo (int) $question->id; ?>" aria-describedby="q-hint-<?php echo (int) $question->id; ?> err-<?php echo (int) $question->id; ?>">
                                     <?php foreach ($opts as $option): ?>
                                         <label class="qfill-radio-option">
                                             <input type="radio" name="question_<?php echo $question->id; ?>"
@@ -249,27 +255,26 @@
                                     <div class="qfill-upload-text"><strong>Clique para selecionar</strong> ou arraste aqui</div>
                                     <div class="qfill-upload-info">
                                         <?php if ($types): ?>Formatos: <strong><?php echo strtoupper(implode(', ', $types)); ?></strong><?php endif; ?>
-                                    · Máx. 5MB
+                                    · Máx. 5 MB
                                     </div>
                                     <input type="file" class="d-none"
                                         id="question_<?php echo $question->id; ?>"
                                         name="question_<?php echo $question->id; ?>"
-                                        accept="<?php echo implode(',', array_map(function ($t) {
-                                                    return '.' . $t;
-                                                }, $types)); ?>"
+                                        aria-labelledby="q-label-<?php echo (int) $question->id; ?>" aria-describedby="q-hint-<?php echo (int) $question->id; ?> err-<?php echo (int) $question->id; ?>"
+                                        accept="<?php $acceptMap = ['pdf' => 'application/pdf', 'png' => 'image/png', 'jpeg' => 'image/jpeg']; echo e(implode(',', array_values(array_intersect_key($acceptMap, array_flip((array) $types))))); ?>"
                                         <?php echo $question->is_required ? 'required' : ''; ?>
                                         onchange="showUploadFile(this)">
                                 </label>
-                                <div id="fname-<?php echo $question->id; ?>" class="qfill-upload-selected d-none">
+                                <div id="fname-<?php echo $question->id; ?>" class="qfill-upload-selected d-none" aria-live="polite">
                                     <i class="fa-solid fa-file-circle-check text-success"></i>
                                     <span></span>
-                                    <button type="button" onclick="clearUpload('<?php echo $question->id; ?>')" class="btn-clear-upload">
-                                        <i class="fa-solid fa-xmark"></i>
+                                    <button type="button" onclick="clearUpload('<?php echo $question->id; ?>')" class="btn-clear-upload" aria-label="Remover ficheiro selecionado">
+                                        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
                                     </button>
                                 </div>
                             <?php endif; ?>
 
-                            <div class="qfill-error d-none" id="err-<?php echo $question->id; ?>">
+                            <div class="qfill-error d-none" id="err-<?php echo $question->id; ?>" role="alert" aria-live="assertive">
                                 <i class="fa-solid fa-triangle-exclamation"></i> <span></span>
                             </div>
                         </div>

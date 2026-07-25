@@ -1,19 +1,28 @@
-# ============================================================
-#  public/.htaccess — XAMPP / Apache
-#  Front-controller: tudo passa por index.php
-# ============================================================
-<IfModule mod_rewrite.c>
-    Options -Indexes
-    RewriteEngine On
-    RewriteBase /dynamic_forms/public/
+Options -Indexes
+DirectoryIndex index.php
 
-    # Deixa passar ficheiros e pastas que existam de facto (css, js…)
+<IfModule mod_rewrite.c>
+    RewriteEngine On
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteCond %{REQUEST_FILENAME} !-d
-
-    # Tudo o resto vai para o router
-    RewriteRule ^(.*)$ index.php?url=$1 [QSA,L]
+    RewriteRule ^(.+)$ index.php?url=$1 [QSA,L]
 </IfModule>
 
-# Bloqueia listagem de directórios
-Options -Indexes
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType text/css "access plus 7 days"
+    ExpiresByType application/javascript "access plus 7 days"
+    ExpiresByType font/woff2 "access plus 30 days"
+    ExpiresByType image/png "access plus 7 days"
+    ExpiresByType image/jpeg "access plus 7 days"
+    ExpiresByType image/webp "access plus 7 days"
+</IfModule>
+
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/css application/javascript application/json image/svg+xml
+</IfModule>

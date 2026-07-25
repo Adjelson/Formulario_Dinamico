@@ -52,6 +52,7 @@
                                 <i class="fa-solid fa-eye"></i>
                             </a>
                             <form action="<?php echo URLROOT; ?>/admin/responses/<?php echo $resp->id; ?>/delete" method="POST" class="d-inline">
+                                <?php echo csrf_field(); ?>
                                 <button type="submit" class="btn btn-sm btn-danger"
                                     onclick="return confirm('Eliminar esta resposta?')">
                                     <i class="fa-solid fa-trash"></i>

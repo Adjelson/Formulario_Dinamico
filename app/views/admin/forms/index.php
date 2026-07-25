@@ -95,6 +95,7 @@
                                             </a>
                                         <?php endif; ?>
                                         <form action="<?php echo URLROOT; ?>/admin/forms/<?php echo $form->id; ?>/delete" method="POST" class="d-inline">
+                                            <?php echo csrf_field(); ?>
                                             <button type="submit" class="btn btn-sm btn-danger" title="Eliminar"
                                                 onclick="return confirm('Tem a certeza que quer eliminar este formulário?')">Eliminar
                                                 <i class="fa-solid fa-trash"></i>

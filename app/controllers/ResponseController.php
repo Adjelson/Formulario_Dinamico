@@ -1,349 +1,445 @@
 <?php
 
-class ResponseController extends Controller {
+class ResponseController extends Controller
+{
+    private Response $responseModel;
+    private Answer $answerModel;
+    private Form $formModel;
+    private Question $questionModel;
+    private Audit $auditModel;
 
-    protected $responseModel;
-    protected $answerModel;
-    protected $formModel;
-    protected $questionModel;
-
-    public function __construct($params = []) {
+    public function __construct(array $params = [])
+    {
         parent::__construct($params);
-        $this->responseModel = $this->model("Response");
-        $this->answerModel   = $this->model("Answer");
-        $this->formModel     = $this->model("Form");
-        $this->questionModel = $this->model("Question");
+        $this->responseModel = $this->model('Response');
+        $this->answerModel = $this->model('Answer');
+        $this->formModel = $this->model('Form');
+        $this->questionModel = $this->model('Question');
+        $this->auditModel = $this->model('Audit');
     }
 
-    public function index() {
-        if (!isset($_SESSION["user_id"]) || $_SESSION["user_role"] != "admin") {
-            header("Location:" . URLROOT . "/login"); exit();
+    public function index(): void
+    {
+        $this->requireAdmin();
+        $formId = (int) ($this->params['id'] ?? 0);
+        $form = $this->formModel->getFormById($formId);
+        if (!$form) {
+            flash_set('danger', 'Formulário não encontrado.');
+            $this->redirect('admin/forms');
         }
-        $form_id   = $this->params["id"] ?? null;
-        $form      = $this->formModel->getFormById($form_id);
-        $responses = $this->responseModel->getResponsesByFormId($form_id);
-        $this->view("admin/forms/responses", ["form" => $form, "responses" => $responses]);
+        $this->view('admin/forms/responses', [
+            'form' => $form,
+            'responses' => $this->responseModel->getResponsesByFormId($formId),
+        ]);
     }
 
-    public function store() {
-        $slug = $this->params["slug"] ?? null;
+    public function store(): void
+    {
+        $this->requireAuth();
+        $this->requirePost();
+        $this->verifyCsrf();
 
-        if (!isset($_SESSION["user_id"])) {
-            $redirect = urlencode("forms/" . $slug);
-            header("Location:" . URLROOT . "/register?redirect=" . $redirect); exit();
-        }
-
-        if ($_SERVER["REQUEST_METHOD"] != "POST") {
-            header("Location:" . URLROOT . "/forms/" . $slug); exit();
-        }
-
+        $slug = (string) ($this->params['slug'] ?? '');
         $form = $this->formModel->getFormBySlug($slug);
-        if (!$form || $form->status != "published") {
-            die("Formulário não disponível.");
+        if (!$form || $form->status !== 'published') {
+            flash_set('danger', 'O formulário não está disponível para receber respostas.');
+            $this->redirect('home');
+        }
+        if (($_SESSION['user_role'] ?? '') === 'admin') {
+            flash_set('warning', 'Administradores podem visualizar, mas não submeter formulários.');
+            $this->redirect('admin/forms');
+        }
+        if ($this->responseModel->getUserResponseForForm((int) $_SESSION['user_id'], (int) $form->id)) {
+            flash_set('warning', 'Já existe uma resposta sua para este formulário.');
+            $this->redirect('forms/' . $slug);
         }
 
-        if ($_SESSION["user_role"] == "admin") {
-            header("Location:" . URLROOT . "/admin/forms"); exit();
-        }
+        $questions = $this->questionModel->getQuestionsByFormId((int) $form->id);
+        $answers = [];
+        $uploadedFiles = [];
 
-        $responseId = $this->responseModel->addResponse([
-            "form_id"    => $form->id,
-            "user_id"    => $_SESSION["user_id"],
-            "ip_address" => $_SERVER["REMOTE_ADDR"],
-        ]);
-        if (!$responseId) { die("Erro ao guardar a resposta."); }
-
-        foreach ($this->questionModel->getQuestionsByFormId($form->id) as $question) {
-            $answerValue = null;
-            $filePath    = null;
-
-            if ($question->type == "upload") {
-                $fileKey = "question_" . $question->id;
-                if (isset($_FILES[$fileKey]) && $_FILES[$fileKey]["error"] == UPLOAD_ERR_OK) {
-                    $file     = $_FILES[$fileKey];
-                    $fileExt  = strtolower(pathinfo(basename($file["name"]), PATHINFO_EXTENSION));
-                    $fileMime = mime_content_type($file["tmp_name"]);
-                    $cfg      = json_decode($question->config ?? '{}');
-                    $allowed  = $cfg->allowed_types ?? [];
-                    $mimeMap  = ["pdf" => "application/pdf", "png" => "image/png", "jpeg" => "image/jpeg"];
-                    $allowedMimes = array_map(function($t) use ($mimeMap) { return isset($mimeMap[$t]) ? $mimeMap[$t] : ''; }, $allowed);
-                    if (!in_array($fileMime, $allowedMimes)) {
-                        die("Tipo de ficheiro não permitido: " . htmlspecialchars($question->label));
-                    }
-                    if ($file["size"] > MAX_UPLOAD_SIZE) {
-                        die("Ficheiro muito grande: " . htmlspecialchars($question->label));
-                    }
-                    if (!is_dir(UPLOAD_DIR)) mkdir(UPLOAD_DIR, 0750, true);
-                    $newFileName = uniqid() . "." . $fileExt;
-                    if (move_uploaded_file($file["tmp_name"], UPLOAD_DIR . DIRECTORY_SEPARATOR . $newFileName)) {
-                        $filePath = $newFileName;
-                    } else {
-                        die("Erro no upload: " . htmlspecialchars($question->label));
-                    }
-                }
-            } elseif ($question->type == "checkbox") {
-                if (isset($_POST["question_" . $question->id])) {
-                    $answerValue = json_encode($_POST["question_" . $question->id]);
-                }
-            } elseif ($question->type == "date") {
-                if (isset($_POST["question_" . $question->id])) {
-                    $raw = trim($_POST["question_" . $question->id]);
-                    // Validar formato YYYY-MM-DD
-                    $answerValue = preg_match('/^\d{4}-\d{2}-\d{2}$/', $raw) ? $raw : null;
-                }
-            } else {
-                if (isset($_POST["question_" . $question->id])) {
-                    $answerValue = strip_tags(trim($_POST["question_" . $question->id]));
+        try {
+            foreach ($questions as $question) {
+                [$answer, $uploaded] = $this->normaliseAnswer($question);
+                $answers[] = $answer;
+                if ($uploaded) {
+                    $uploadedFiles[] = $uploaded;
                 }
             }
 
-            if ($question->is_required && empty($answerValue) && empty($filePath)) {
-                die("A pergunta '" . htmlspecialchars($question->label) . "' é obrigatória.");
-            }
-
-            $this->answerModel->addAnswer([
-                "response_id"    => $responseId,
-                "question_id"    => $question->id,
-                "question_label" => $question->label,
-                "question_type"  => $question->type,
-                "value"          => $answerValue,
-                "file_path"      => $filePath,
+            $this->responseModel->beginTransaction();
+            $responseId = $this->responseModel->addResponse([
+                'form_id' => (int) $form->id,
+                'user_id' => (int) $_SESSION['user_id'],
+                'ip_address' => client_ip(),
             ]);
+            foreach ($answers as $answer) {
+                $answer['response_id'] = $responseId;
+                $this->answerModel->addAnswer($answer);
+            }
+            $this->responseModel->commit();
+
+            $this->auditModel->log('response.create', 'response', $responseId, ['form_id' => (int) $form->id]);
+            $this->redirect('forms/' . $slug . '/success');
+        } catch (Throwable $e) {
+            $this->responseModel->rollBack();
+            foreach ($uploadedFiles as $file) {
+                if (is_file($file)) {
+                    @unlink($file);
+                }
+            }
+            error_log('[Response store] ' . $e->getMessage());
+            $message = $e instanceof InvalidArgumentException
+                ? $e->getMessage()
+                : 'Não foi possível guardar a resposta. Nenhum dado parcial foi registado.';
+            flash_set('danger', $message);
+            $this->redirect('forms/' . $slug);
         }
-        header("Location:" . URLROOT . "/forms/" . $slug . "/success"); exit();
     }
 
-    public function history() {
-        if (!isset($_SESSION["user_id"])) {
-            header("Location:" . URLROOT . "/login"); exit();
+    public function deleteOwn(): void
+    {
+        $this->requireAuth();
+        $this->requirePost();
+        $this->verifyCsrf();
+        if (($_SESSION['user_role'] ?? '') === 'admin') {
+            $this->redirect('admin/dashboard');
         }
-        if ($_SESSION["user_role"] == "admin") {
-            header("Location:" . URLROOT . "/admin/dashboard"); exit();
+
+        $responseId = (int) ($this->params['id'] ?? 0);
+        $slug = (string) ($this->params['slug'] ?? '');
+        $response = $this->responseModel->getResponseDetail($responseId);
+        if (!$response || (int) $response->user_id !== (int) $_SESSION['user_id']) {
+            http_response_code(403);
+            throw new RuntimeException('Não tem permissão para eliminar esta resposta.', 403);
         }
-        $this->view("public/history", [
-            "responses" => $this->responseModel->getResponsesByUserId($_SESSION["user_id"]),
+
+        $this->responseModel->beginTransaction();
+        try {
+            $answers = $this->answerModel->getAnswersByResponseId($responseId);
+            $this->model('Trash')->archiveResponse($response, $answers, (int) $_SESSION['user_id']);
+            $this->responseModel->deleteResponse($responseId);
+            $this->responseModel->commit();
+            $this->auditModel->log('response.retract', 'response', $responseId);
+            flash_set('success', 'A resposta anterior foi arquivada. Já pode preencher novamente.');
+        } catch (Throwable $e) {
+            $this->responseModel->rollBack();
+            error_log('[Response retract] ' . $e->getMessage());
+            flash_set('danger', 'Não foi possível remover a resposta.');
+        }
+        $this->redirect($slug !== '' ? 'forms/' . $slug : 'home');
+    }
+
+    public function history(): void
+    {
+        $this->requireAuth();
+        if (($_SESSION['user_role'] ?? '') === 'admin') {
+            $this->redirect('admin/dashboard');
+        }
+        $this->view('public/history', [
+            'responses' => $this->responseModel->getResponsesByUserId((int) $_SESSION['user_id']),
         ]);
     }
 
-    public function detail() {
-        if (!isset($_SESSION["user_id"])) {
-            header("Location:" . URLROOT . "/login"); exit();
+    public function detail(): void
+    {
+        $this->requireAuth();
+        if (($_SESSION['user_role'] ?? '') === 'admin') {
+            $this->redirect('admin/dashboard');
         }
-        if ($_SESSION["user_role"] == "admin") {
-            header("Location:" . URLROOT . "/admin/dashboard"); exit();
+        $responseId = (int) ($this->params['response_id'] ?? 0);
+        $response = $this->responseModel->getResponseDetail($responseId);
+        if (!$response || (int) $response->user_id !== (int) $_SESSION['user_id']) {
+            http_response_code(404);
+            throw new RuntimeException('Resposta não encontrada.', 404);
         }
-        $response_id = $this->params["response_id"] ?? null;
-        $response    = $this->responseModel->getResponseDetail($response_id);
-        $answers     = $this->answerModel->getAnswersByResponseId($response_id);
-        if (!$response || $response->user_id != $_SESSION["user_id"]) {
-            die("Acesso negado ou resposta não encontrada.");
-        }
-        $this->view("public/response_detail", ["response" => $response, "answers" => $answers]);
+        $this->view('public/response_detail', [
+            'response' => $response,
+            'answers' => $this->answerModel->getAnswersByResponseId($responseId),
+        ]);
     }
 
-    public function adminDetail() {
-        if (!isset($_SESSION["user_id"]) || $_SESSION["user_role"] != "admin") {
-            header("Location:" . URLROOT . "/login"); exit();
+    public function adminDetail(): void
+    {
+        $this->requireAdmin();
+        $responseId = (int) ($this->params['id'] ?? 0);
+        $response = $this->responseModel->getResponseDetail($responseId);
+        if (!$response) {
+            flash_set('danger', 'Resposta não encontrada.');
+            $this->redirect('admin/forms');
         }
-        $response_id = $this->params["id"] ?? null;
-        $response    = $this->responseModel->getResponseDetail($response_id);
-        $answers     = $this->answerModel->getAnswersByResponseId($response_id);
-        if (!$response) { die("Resposta não encontrada."); }
-        $this->view("admin/forms/response_detail", ["response" => $response, "answers" => $answers]);
+        $this->view('admin/forms/response_detail', [
+            'response' => $response,
+            'answers' => $this->answerModel->getAnswersByResponseId($responseId),
+        ]);
     }
 
-    public function exportCsv() {
-        // Redirecionar para exportZip — mantido por compatibilidade de URL
-        $this->exportZip();
+    public function exportCsv(): void
+    {
+        $this->requireAdmin();
+        $this->export(false);
     }
 
-    public function exportZip() {
-        if (!isset($_SESSION["user_id"]) || $_SESSION["user_role"] != "admin") {
-            header("Location:" . URLROOT . "/login"); exit();
-        }
-        $form_id   = $this->params["id"] ?? null;
-        $form      = $this->formModel->getFormById($form_id);
-        if (!$form) die("Formulário não encontrado.");
-        $questions = $this->questionModel->getQuestionsByFormId($form_id);
-        $responses = $this->responseModel->getResponsesByFormId($form_id);
+    public function exportZip(): void
+    {
+        $this->requireAdmin();
+        $this->export(true);
+    }
 
-        if (empty($responses)) {
-            header("Location:" . URLROOT . "/admin/forms/" . $form_id . "/responses?msg=no_data");
-            exit();
-        }
+    public function delete(): void
+    {
+        $this->requireAdmin();
+        $this->requirePost();
+        $this->verifyCsrf();
 
-        // Verificar extensão ZipArchive
-        if (!class_exists('ZipArchive')) {
-            // Fallback: CSV se ZipArchive não disponível
-            $this->exportCsvFallback($form, $questions, $responses);
-            return;
+        $responseId = (int) ($this->params['id'] ?? 0);
+        $response = $this->responseModel->getResponseDetail($responseId);
+        if (!$response) {
+            flash_set('danger', 'Resposta não encontrada.');
+            $this->redirect('admin/forms');
         }
 
-        // Usar pasta tmp do sistema, ou storage/ do projecto como fallback
-        $sysTmp  = sys_get_temp_dir();
-        $tmpBase = (is_writable($sysTmp) ? $sysTmp : APPROOT . DIRECTORY_SEPARATOR . 'storage');
-        $tmpDir  = $tmpBase . DIRECTORY_SEPARATOR . 'df_export_' . uniqid();
-        if (!mkdir($tmpDir, 0750, true)) {
-            die("Erro ao criar pasta temporária para export.");
+        $this->responseModel->beginTransaction();
+        try {
+            $answers = $this->answerModel->getAnswersByResponseId($responseId);
+            $this->model('Trash')->archiveResponse($response, $answers, (int) $_SESSION['user_id']);
+            $this->responseModel->deleteResponse($responseId);
+            $this->responseModel->commit();
+            $this->auditModel->log('response.delete', 'response', $responseId);
+            flash_set('success', 'Resposta arquivada e removida da lista ativa.');
+        } catch (Throwable $e) {
+            $this->responseModel->rollBack();
+            error_log('[Response delete] ' . $e->getMessage());
+            flash_set('danger', 'Não foi possível eliminar a resposta.');
         }
+        $this->redirect('admin/forms/' . (int) $response->form_id . '/responses');
+    }
 
-        $zipName = 'respostas_' . $form->slug . '_' . date('Ymd_His') . '.zip';
-        $zipPath = $tmpDir . DIRECTORY_SEPARATOR . $zipName;
+    private function normaliseAnswer(object $question): array
+    {
+        $key = 'question_' . $question->id;
+        $config = json_decode($question->config ?: '{}', true) ?: [];
+        $base = [
+            'question_id' => (int) $question->id,
+            'question_label' => $question->label,
+            'question_type' => $question->type,
+            'value' => null,
+            'file_path' => null,
+            'original_file_name' => null,
+            'file_mime' => null,
+            'file_size' => null,
+        ];
 
-        $zip = new ZipArchive();
-        if ($zip->open($zipPath, ZipArchive::CREATE) !== true) {
-            die("Erro ao criar o arquivo ZIP.");
-        }
+        if ($question->type === 'upload') {
+            $file = $_FILES[$key] ?? null;
+            if (!$file || $file['error'] === UPLOAD_ERR_NO_FILE) {
+                if ((int) $question->is_required === 1) {
+                    throw new InvalidArgumentException('O campo “' . $question->label . '” é obrigatório.');
+                }
+                return [$base, null];
+            }
+            if ($file['error'] !== UPLOAD_ERR_OK || !is_uploaded_file($file['tmp_name'])) {
+                throw new InvalidArgumentException('O upload de “' . $question->label . '” falhou.');
+            }
+            if ((int) $file['size'] > MAX_UPLOAD_SIZE) {
+                throw new InvalidArgumentException('O ficheiro de “' . $question->label . '” excede 5 MB.');
+            }
 
-        // 1. Ficheiro CSV geral dentro do ZIP
-        $csvContent = chr(0xEF) . chr(0xBB) . chr(0xBF); // BOM UTF-8
-        $header = ["ID", "Respondente", "Email", "Data Submissão", "IP"];
-        foreach ($questions as $q) $header[] = $q->label;
-        $csvContent .= $this->arrayToCsvLine($header);
-
-        foreach ($responses as $response) {
-            $userName = $response->user_name ?? 'Anonimo';
-            $row = [
-                $response->id,
-                $userName,
-                $response->user_email ?? '',
-                $response->submitted_at,
-                $response->ip_address,
+            $mime = (new finfo(FILEINFO_MIME_TYPE))->file($file['tmp_name']);
+            $mimeMap = [
+                'application/pdf' => 'pdf',
+                'image/png' => 'png',
+                'image/jpeg' => 'jpeg',
             ];
-            $answerMap = [];
-            foreach ($this->answerModel->getAnswersByResponseId($response->id) as $a) {
-                $answerMap[$a->question_id] = $a;
+            $allowed = is_array($config['allowed_types'] ?? null) ? $config['allowed_types'] : ['pdf'];
+            $extension = $mimeMap[$mime] ?? null;
+            if ($extension === null || !in_array($extension, $allowed, true)) {
+                throw new InvalidArgumentException('O tipo de ficheiro enviado em “' . $question->label . '” não é permitido.');
             }
-            foreach ($questions as $q) {
-                if (isset($answerMap[$q->id])) {
-                    $a = $answerMap[$q->id];
-                    if ($q->type == "upload") {
-                        $row[] = !empty($a->file_path) ? 'anexo/' . $a->file_path : '';
-                    } elseif ($q->type == "checkbox") {
-                        $row[] = implode(" | ", json_decode($a->value ?? '[]', true) ?? []);
-                    } else {
-                        $row[] = $a->value ?? '';
-                    }
-                } else {
-                    $row[] = '';
-                }
+            if (!is_dir(UPLOAD_DIR) && !mkdir(UPLOAD_DIR, 0750, true) && !is_dir(UPLOAD_DIR)) {
+                throw new RuntimeException('Não foi possível criar a pasta de uploads.');
             }
-            $csvContent .= $this->arrayToCsvLine($row);
-        }
-        $zip->addFromString('respostas.csv', $csvContent);
-
-        // 2. Ficheiro individual por respondente (TXT com nome do respondente)
-        foreach ($responses as $response) {
-            $userName  = $response->user_name ?? 'Anonimo';
-            $safeUser  = preg_replace('/[^a-zA-Z0-9_\-]/', '_', $userName);
-            $fileName  = $safeUser . '_' . $response->id . '.txt';
-
-            $txt  = "=== RESPOSTA AO FORMULÁRIO: " . $form->title . " ===\n";
-            $txt .= "Respondente : " . ($response->user_name ?? 'Anónimo') . "\n";
-            $txt .= "Email       : " . ($response->user_email ?? 'N/A') . "\n";
-            $txt .= "Data        : " . $response->submitted_at . "\n";
-            $txt .= "IP          : " . $response->ip_address . "\n";
-            $txt .= str_repeat('-', 60) . "\n\n";
-
-            $answerMap = [];
-            foreach ($this->answerModel->getAnswersByResponseId($response->id) as $a) {
-                $answerMap[$a->question_id] = $a;
+            $storedName = bin2hex(random_bytes(20)) . '.' . ($extension === 'jpeg' ? 'jpg' : $extension);
+            $storedPath = UPLOAD_DIR . DIRECTORY_SEPARATOR . $storedName;
+            if (!move_uploaded_file($file['tmp_name'], $storedPath)) {
+                throw new RuntimeException('Não foi possível guardar o ficheiro enviado.');
             }
-            foreach ($questions as $idx => $q) {
-                $txt .= ($idx + 1) . ". " . $q->label . "\n";
-                if (isset($answerMap[$q->id])) {
-                    $a = $answerMap[$q->id];
-                    if ($q->type == "upload") {
-                        $txt .= "   [Ficheiro: " . ($a->file_path ?? 'nenhum') . "]\n";
-                        // Incluir ficheiro no ZIP se existir
-                        if (!empty($a->file_path)) {
-                            $filePath = UPLOAD_DIR . DIRECTORY_SEPARATOR . $a->file_path;
-                            if (file_exists($filePath)) {
-                                $zip->addFile($filePath, 'anexos/' . $a->file_path);
-                            }
-                        }
-                    } elseif ($q->type == "checkbox") {
-                        $vals = json_decode($a->value ?? '[]', true) ?? [];
-                        $txt .= "   " . implode(", ", $vals) . "\n";
-                    } else {
-                        $txt .= "   " . ($a->value ?? '(sem resposta)') . "\n";
-                    }
-                } else {
-                    $txt .= "   (sem resposta)\n";
-                }
-                $txt .= "\n";
-            }
-            $zip->addFromString('respondentes/' . $fileName, $txt);
+            $base['file_path'] = $storedName;
+            $base['original_file_name'] = text_substr(basename((string) $file['name']), 0, 255);
+            $base['file_mime'] = $mime;
+            $base['file_size'] = (int) $file['size'];
+            return [$base, $storedPath];
         }
 
+        $raw = $_POST[$key] ?? null;
+        if ($question->type === 'checkbox') {
+            $values = is_array($raw) ? array_map('strval', $raw) : [];
+            $allowed = is_array($config['options'] ?? null) ? $config['options'] : [];
+            $values = array_values(array_unique(array_intersect($values, $allowed)));
+            if ((int) $question->is_required === 1 && $values === []) {
+                throw new InvalidArgumentException('Selecione pelo menos uma opção em “' . $question->label . '”.');
+            }
+            $base['value'] = json_encode($values, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+            return [$base, null];
+        }
+
+        $value = is_scalar($raw) ? trim((string) $raw) : '';
+        if ((int) $question->is_required === 1 && $value === '') {
+            throw new InvalidArgumentException('O campo “' . $question->label . '” é obrigatório.');
+        }
+
+        switch ($question->type) {
+            case 'short_text':
+                if (text_length($value) > 500) {
+                    throw new InvalidArgumentException('A resposta de “' . $question->label . '” excede 500 caracteres.');
+                }
+                break;
+            case 'long_text':
+                if (text_length($value) > 10000) {
+                    throw new InvalidArgumentException('A resposta de “' . $question->label . '” é demasiado longa.');
+                }
+                break;
+            case 'numeric':
+                if ($value !== '' && filter_var($value, FILTER_VALIDATE_FLOAT) === false) {
+                    throw new InvalidArgumentException('Introduza um número válido em “' . $question->label . '”.');
+                }
+                break;
+            case 'date':
+                if ($value !== '') {
+                    $date = DateTimeImmutable::createFromFormat('!Y-m-d', $value);
+                    if (!$date || $date->format('Y-m-d') !== $value) {
+                        throw new InvalidArgumentException('Introduza uma data válida em “' . $question->label . '”.');
+                    }
+                    if (!empty($config['date_min']) && $value < $config['date_min']) {
+                        throw new InvalidArgumentException('A data de “' . $question->label . '” é anterior ao limite permitido.');
+                    }
+                    if (!empty($config['date_max']) && $value > $config['date_max']) {
+                        throw new InvalidArgumentException('A data de “' . $question->label . '” é posterior ao limite permitido.');
+                    }
+                }
+                break;
+            case 'radio':
+                $allowed = is_array($config['options'] ?? null) ? $config['options'] : [];
+                if ($value !== '' && !in_array($value, $allowed, true)) {
+                    throw new InvalidArgumentException('A opção enviada em “' . $question->label . '” não é válida.');
+                }
+                break;
+        }
+
+        $base['value'] = $value;
+        return [$base, null];
+    }
+
+    private function export(bool $zipRequested): void
+    {
+        $formId = (int) ($this->params['id'] ?? 0);
+        $form = $this->formModel->getFormById($formId);
+        if (!$form) {
+            throw new RuntimeException('Formulário não encontrado.', 404);
+        }
+        $responses = $this->responseModel->getResponsesByFormId($formId);
+        if ($responses === []) {
+            flash_set('warning', 'Este formulário ainda não possui respostas para exportar.');
+            $this->redirect('admin/forms/' . $formId . '/responses');
+        }
+
+        $allAnswers = $this->answerModel->getAnswersByResponseIds(array_map(static fn($r) => (int) $r->id, $responses));
+        $answersByResponse = [];
+        foreach ($allAnswers as $answer) {
+            $answersByResponse[(int) $answer->response_id][] = $answer;
+        }
+
+        $columns = [];
+        foreach ($this->questionModel->getQuestionsByFormId($formId) as $question) {
+            $columns['id:' . $question->id] = $question->label;
+        }
+        foreach ($allAnswers as $answer) {
+            $key = $answer->question_id ? 'id:' . $answer->question_id : 'label:' . $answer->question_label;
+            $columns[$key] ??= $answer->question_label;
+        }
+
+        $csv = $this->buildCsv($responses, $answersByResponse, $columns);
+        $safeSlug = preg_replace('/[^a-z0-9_-]/i', '_', $form->slug);
+
+        if (!$zipRequested || !class_exists('ZipArchive')) {
+            header('Content-Type: text/csv; charset=UTF-8');
+            header('Content-Disposition: attachment; filename="respostas_' . $safeSlug . '.csv"');
+            header('X-Content-Type-Options: nosniff');
+            echo $csv;
+            exit;
+        }
+
+        $tmp = tempnam(sys_get_temp_dir(), 'dynamic_forms_');
+        if ($tmp === false) {
+            throw new RuntimeException('Não foi possível criar o ficheiro temporário.');
+        }
+        $zipPath = $tmp . '.zip';
+        @unlink($tmp);
+        $zip = new ZipArchive();
+        if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+            throw new RuntimeException('Não foi possível gerar o ZIP.');
+        }
+        $zip->addFromString('respostas.csv', $csv);
+
+        $addedFiles = [];
+        foreach ($allAnswers as $answer) {
+            if (!$answer->file_path || isset($addedFiles[$answer->file_path])) {
+                continue;
+            }
+            $path = UPLOAD_DIR . DIRECTORY_SEPARATOR . basename($answer->file_path);
+            if (is_file($path)) {
+                $name = $answer->original_file_name ?: $answer->file_path;
+                $zipName = 'anexos/' . $answer->response_id . '_' . preg_replace('/[^\pL\pN_.-]+/u', '_', basename($name));
+                $zip->addFile($path, $zipName);
+                $addedFiles[$answer->file_path] = true;
+            }
+        }
         $zip->close();
 
-        // Enviar ZIP
+        $downloadName = 'respostas_' . $safeSlug . '_' . date('Ymd_His') . '.zip';
         header('Content-Type: application/zip');
-        header('Content-Disposition: attachment; filename="' . $zipName . '"');
+        header('Content-Disposition: attachment; filename="' . $downloadName . '"');
         header('Content-Length: ' . filesize($zipPath));
-        header('Cache-Control: no-cache');
-        if (ob_get_level()) ob_end_clean();
+        header('X-Content-Type-Options: nosniff');
         readfile($zipPath);
-
-        // Limpar ficheiro temporário
         @unlink($zipPath);
-        @rmdir($tmpDir);
-        exit();
+        exit;
     }
 
-    private function arrayToCsvLine($row) {
-        $escaped = array_map(function($v) {
-            $v = str_replace('"', '""', (string)$v);
-            return '"' . $v . '"';
-        }, $row);
-        return implode(';', $escaped) . "\n";
-    }
+    private function buildCsv(array $responses, array $answersByResponse, array $columns): string
+    {
+        $stream = fopen('php://temp', 'w+b');
+        fwrite($stream, "\xEF\xBB\xBF");
+        fputcsv($stream, array_merge(['ID', 'Respondente', 'Email', 'Data de submissão'], array_values($columns)), ';');
 
-    private function exportCsvFallback($form, $questions, $responses) {
-        header("Content-Type: text/csv; charset=UTF-8");
-        header("Content-Disposition: attachment; filename=\"respostas_" . $form->slug . ".csv\"");
-        $output = fopen("php://output", "w");
-        fprintf($output, chr(0xEF) . chr(0xBB) . chr(0xBF));
-        $header = ["ID", "Respondente", "Email", "Data Submissão"];
-        foreach ($questions as $q) $header[] = $q->label;
-        fputcsv($output, $header, ';');
         foreach ($responses as $response) {
-            $row = [$response->id, $response->user_name ?? '', $response->user_email ?? '', $response->submitted_at];
             $answerMap = [];
-            foreach ($this->answerModel->getAnswersByResponseId($response->id) as $a) $answerMap[$a->question_id] = $a;
-            foreach ($questions as $q) {
-                if (isset($answerMap[$q->id])) {
-                    $a = $answerMap[$q->id];
-                    $row[] = $q->type == "checkbox" ? implode(" | ", json_decode($a->value ?? '[]', true) ?? []) : ($a->value ?? '');
-                } else $row[] = '';
+            foreach ($answersByResponse[(int) $response->id] ?? [] as $answer) {
+                $key = $answer->question_id ? 'id:' . $answer->question_id : 'label:' . $answer->question_label;
+                if ($answer->question_type === 'checkbox') {
+                    $value = implode(' | ', json_decode($answer->value ?: '[]', true) ?: []);
+                } elseif ($answer->question_type === 'upload') {
+                    $value = $answer->original_file_name ?: $answer->file_path;
+                } else {
+                    $value = $answer->value ?? '';
+                }
+                $answerMap[$key] = csv_safe($value);
             }
-            fputcsv($output, $row, ';');
-        }
-        fclose($output); exit();
-    }
 
-    public function delete() {
-        if (!isset($_SESSION["user_id"]) || $_SESSION["user_role"] != "admin") {
-            header("Location:" . URLROOT . "/login"); exit();
-        }
-        $response_id = $this->params["id"] ?? null;
-        if ($_SERVER["REQUEST_METHOD"] == "POST") {
-            $response = $this->responseModel->getResponseDetail($response_id);
-            if (!$response) die("Resposta não encontrada.");
-
-            $answers = $this->answerModel->getAnswersByResponseId($response_id);
-
-            // Arquivar na tabela de rascunho antes de eliminar
-            $trash = $this->model("Trash");
-            $trash->archiveResponse($response, $answers, $_SESSION["user_id"]);
-
-            // Manter ficheiros de upload (dados arquivados)
-            $this->answerModel->deleteAnswersByResponseId($response_id);
-            if ($this->responseModel->deleteResponse($response_id)) {
-                header("Location:" . URLROOT . "/admin/forms/" . $response->form_id . "/responses"); exit();
+            $row = [
+                $response->id,
+                csv_safe($response->user_name ?? ''),
+                csv_safe($response->user_email ?? ''),
+                $response->submitted_at,
+            ];
+            foreach (array_keys($columns) as $key) {
+                $row[] = $answerMap[$key] ?? '';
             }
-            die("Erro ao eliminar a resposta.");
+            fputcsv($stream, $row, ';');
         }
+        rewind($stream);
+        $content = stream_get_contents($stream) ?: '';
+        fclose($stream);
+        return $content;
     }
 }

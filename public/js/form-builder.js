@@ -50,7 +50,7 @@ function addQuestion(existingQ = null, index = null) {
     const required = existingQ ? existingQ.is_required : 0;
     let   config   = {};
     if (existingQ && existingQ.config) {
-        try { config = JSON.parse(existingQ.config); } catch(e) { config = {}; }
+        try { config = typeof existingQ.config === 'string' ? JSON.parse(existingQ.config) : (existingQ.config || {}); } catch(e) { config = {}; }
     }
     const qNum  = container.querySelectorAll('.question-card').length + 1;
     const tInfo = typeLabels[type] || typeLabels.short_text;
@@ -72,8 +72,11 @@ function addQuestion(existingQ = null, index = null) {
 
     // Escapar label para uso seguro em HTML
     const safeLabel = label.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const hiddenId = existingQ && existingQ.id
+        ? `<input type="hidden" name="questions[${qId}][id]" value="${Number(existingQ.id)}">`
+        : '';
 
-    div.innerHTML = `
+    div.innerHTML = `${hiddenId}
         <div class="qcard-header" style="--q-color:${tInfo.color}">
             <div class="qcard-num">${qNum}</div>
             <div class="qcard-type-badge">
@@ -81,13 +84,13 @@ function addQuestion(existingQ = null, index = null) {
                 <span id="typeBadgeLabel-${qId}">${tInfo.label}</span>
             </div>
             <div class="qcard-actions ms-auto">
-                <button type="button" class="btn-qmove" onclick="moveQuestion(${qId},'up')" title="Subir">
+                <button type="button" class="btn-qmove" onclick="moveQuestion(${qId},'up')" title="Mover pergunta para cima" aria-label="Mover pergunta para cima">
                     <i class="fa-solid fa-chevron-up"></i>
                 </button>
-                <button type="button" class="btn-qmove" onclick="moveQuestion(${qId},'down')" title="Descer">
+                <button type="button" class="btn-qmove" onclick="moveQuestion(${qId},'down')" title="Mover pergunta para baixo" aria-label="Mover pergunta para baixo">
                     <i class="fa-solid fa-chevron-down"></i>
                 </button>
-                <button type="button" class="btn-qdel" onclick="removeQuestion(${qId})" title="Eliminar pergunta">
+                <button type="button" class="btn-qdel" onclick="removeQuestion(${qId})" title="Eliminar pergunta" aria-label="Eliminar pergunta">
                     <i class="fa-solid fa-trash-can"></i>
                 </button>
             </div>
@@ -95,19 +98,19 @@ function addQuestion(existingQ = null, index = null) {
         <div class="qcard-body">
             <div class="row g-3 align-items-start">
                 <div class="col-md-7">
-                    <label class="form-label fw-600 mb-1" style="font-size:.82rem;">
+                    <label class="form-label fw-600 mb-1" for="question-label-${qId}" style="font-size:.82rem;">
                         <i class="fa-solid fa-pencil" style="color:var(--green-600);"></i>
                         Pergunta <span class="text-danger">*</span>
                     </label>
                     <input type="text" class="form-control form-control-sm"
-                        name="questions[${qId}][label]"
+                        id="question-label-${qId}" name="questions[${qId}][label]"
                         value="${safeLabel}"
                         placeholder="Ex: Qual é a sua data de nascimento?"
-                        required>
+                        maxlength="500" required>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label fw-600 mb-1" style="font-size:.82rem;">
-                        <i class="fa-solid fa-list" style="color:var(--green-600);"></i>
+                    <label class="form-label fw-600 mb-1" for="typeSelect-${qId}" style="font-size:.82rem;">
+                        <i class="fa-solid fa-list" aria-hidden="true" style="color:var(--green-600);"></i>
                         Tipo
                     </label>
                     <select class="form-select form-select-sm" name="questions[${qId}][type]"
@@ -142,14 +145,14 @@ function addQuestion(existingQ = null, index = null) {
                 </label>
                 <div class="row g-2">
                     <div class="col-6">
-                        <label style="font-size:.75rem;color:var(--black-500);">Data mínima</label>
-                        <input type="date" class="form-control form-control-sm"
+                        <label for="date-min-${qId}" style="font-size:.75rem;color:var(--black-500);">Data mínima</label>
+                        <input type="date" id="date-min-${qId}" class="form-control form-control-sm"
                             name="questions[${qId}][config][date_min]"
                             value="${config.date_min || ''}">
                     </div>
                     <div class="col-6">
-                        <label style="font-size:.75rem;color:var(--black-500);">Data máxima</label>
-                        <input type="date" class="form-control form-control-sm"
+                        <label for="date-max-${qId}" style="font-size:.75rem;color:var(--black-500);">Data máxima</label>
+                        <input type="date" id="date-max-${qId}" class="form-control form-control-sm"
                             name="questions[${qId}][config][date_max]"
                             value="${config.date_max || ''}">
                     </div>
@@ -236,13 +239,14 @@ function addOptionElement(qId, value, idx) {
         '<span class="input-group-text" style="background:var(--green-50);border-color:var(--green-200);">' +
             '<i class="fa-solid fa-grip-dots-vertical" style="color:var(--green-500);font-size:.7rem;"></i>' +
         '</span>' +
-        '<input type="text" class="form-control"' +
+        '<label class="visually-hidden" for="option-' + qId + '-' + idx + '">Opção ' + (idx + 1) + '</label>' +
+        '<input type="text" id="option-' + qId + '-' + idx + '" class="form-control"' +
             ' name="questions[' + qId + '][config][options][]"' +
             ' value="' + safeVal + '"' +
-            ' placeholder="Opção ' + (idx + 1) + '">' +
+            ' placeholder="Opção ' + (idx + 1) + '" maxlength="200" required>' +
         '<button type="button" class="btn btn-outline-danger btn-sm"' +
             ' onclick="document.getElementById(\'opt-' + qId + '-' + idx + '\').remove()"' +
-            ' title="Remover"><i class="fa-solid fa-xmark"></i></button>';
+            ' title="Remover" aria-label="Remover opção ' + (idx + 1) + '"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>';
     list.appendChild(div);
 }
 
@@ -277,7 +281,9 @@ document.addEventListener('DOMContentLoaded', function() {
     form.addEventListener('submit', function(e) {
         if (document.querySelectorAll('.question-card').length === 0) {
             e.preventDefault();
-            alert('Por favor, adicione pelo menos uma pergunta ao formulário.');
+            const region = document.getElementById('status-region');
+            if (region) region.innerHTML = '<div class="alert alert-danger" role="alert">Adicione pelo menos uma pergunta ao formulário.</div>';
+            document.getElementById('addQuestionBtn')?.focus();
         }
     });
 });

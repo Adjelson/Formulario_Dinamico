@@ -35,8 +35,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
       if (!checked) {
         valid = false;
+        block?.querySelectorAll('input[type="radio"]').forEach((input) => input.setAttribute("aria-invalid", "true"));
         showError(block, "Selecione uma opção.");
       } else {
+        block?.querySelectorAll('input[type="radio"]').forEach((input) => input.removeAttribute("aria-invalid"));
         clearError(block);
       }
     });
@@ -58,8 +60,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
       if (checked.length === 0) {
         valid = false;
+        block?.querySelectorAll('input[type="checkbox"]').forEach((input) => input.setAttribute("aria-invalid", "true"));
         showError(block, "Selecione pelo menos uma opção.");
       } else {
+        block?.querySelectorAll('input[type="checkbox"]').forEach((input) => input.removeAttribute("aria-invalid"));
         clearError(block);
       }
     });
@@ -73,7 +77,9 @@ document.addEventListener("DOMContentLoaded", function () {
         ".is-invalid, .qfill-block.has-error",
       );
       if (firstErr) {
-        firstErr.scrollIntoView({ behavior: "smooth", block: "center" });
+        firstErr.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
+        const focusTarget = firstErr.matches("input,textarea,select,button") ? firstErr : firstErr.querySelector("input,textarea,select,button");
+        if (focusTarget) focusTarget.focus({preventScroll:true});
       }
     } else {
       if (alertBox) alertBox.classList.add("d-none");
@@ -99,13 +105,15 @@ function validateField(field) {
   if (field.type === "file") {
     if (field.files.length === 0) {
       field.classList.add("is-invalid");
+      field.setAttribute("aria-invalid", "true");
       showError(block, "Selecione um ficheiro.");
       return false;
     }
 
     if (field.files[0].size > 5 * 1024 * 1024) {
       field.classList.add("is-invalid");
-      showError(block, "Máx: 5MB.");
+      field.setAttribute("aria-invalid", "true");
+      showError(block, "O ficheiro não pode exceder 5 MB.");
       return false;
     }
   }
@@ -113,11 +121,13 @@ function validateField(field) {
   // TEXT / NUMBER / DATE
   if (!field.value.trim()) {
     field.classList.add("is-invalid");
+    field.setAttribute("aria-invalid", "true");
     showError(block, "Campo obrigatório.");
     return false;
   }
 
   field.classList.remove("is-invalid");
+  field.removeAttribute("aria-invalid");
   field.classList.add("is-valid");
   clearError(block);
 

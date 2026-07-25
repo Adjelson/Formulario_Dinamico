@@ -57,7 +57,7 @@ class Router
         if ($this->match($url)) {
             $controller      = $this->convertToStudlyCaps($this->params['controller']);
             $controllerClass = $controller . 'Controller';
-            $controllerFile  = '../app/controllers/' . $controllerClass . '.php';
+            $controllerFile  = APPROOT . '/app/controllers/' . $controllerClass . '.php';
 
             if (!file_exists($controllerFile)) {
                 throw new Exception('Ficheiro de controller não encontrado: ' . $controllerClass);

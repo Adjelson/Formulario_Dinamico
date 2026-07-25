@@ -3,7 +3,7 @@
 
     <div class="page-header">
         <h1><i class="fa-solid fa-users"></i> Utilizadores</h1>
-        <button class="btn btn-primary" onclick="openCreateUserModal()">
+        <button type="button" class="btn btn-primary" onclick="openCreateUserModal()">
             <i class="fa-solid fa-user-plus"></i> Novo Utilizador
         </button>
     </div>
@@ -20,7 +20,8 @@
         <div class="col-md-4">
             <div class="df-search">
                 <i class="fa-solid fa-magnifying-glass search-icon"></i>
-                <input type="text" id="searchUsers" placeholder="Pesquisar utilizadores..." class="form-control">
+                <label for="searchUsers" class="visually-hidden">Pesquisar utilizadores</label>
+                <input type="search" id="searchUsers" placeholder="Pesquisar por nome ou email" class="form-control" autocomplete="off" aria-controls="usersTable">
             </div>
         </div>
     </div>
@@ -28,6 +29,7 @@
     <div class="df-table-wrapper">
         <div class="table-responsive">
         <table class="table" id="usersTable">
+            <caption class="visually-hidden">Lista de utilizadores, perfis, estados e ações disponíveis</caption>
             <thead>
                 <tr>
                     <th><i class="fa-solid fa-user me-1"></i>Nome</th>
@@ -73,14 +75,17 @@
                     <td class="text-muted small"><?php echo date('d/m/Y', strtotime($user->created_at)); ?></td>
                     <td>
                         <button class="btn btn-sm btn-secondary me-1"
-                            onclick="openEditUserModal(<?php echo htmlspecialchars(json_encode($user)); ?>)">
-                            <i class="fa-solid fa-pencil"></i>
+                            type="button" aria-label="Editar <?php echo e($user->name); ?>"
+                            onclick="openEditUserModal(<?php echo e(json_encode($user, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT)); ?>)">
+                            <i class="fa-solid fa-pencil" aria-hidden="true"></i>
                         </button>
                         <form action="<?php echo URLROOT; ?>/admin/users/<?php echo $user->id; ?>/delete"
                               method="POST" class="d-inline">
+                                  <?php echo csrf_field(); ?>
                             <button type="submit" class="btn btn-sm btn-danger"
-                                onclick="return confirm('Eliminar este utilizador?')">
-                                <i class="fa-solid fa-trash"></i>
+                                aria-label="Desativar <?php echo e($user->name); ?>"
+                                onclick="return confirm('Desativar este utilizador? O histórico será preservado.')">
+                                <i class="fa-solid fa-user-slash" aria-hidden="true"></i>
                             </button>
                         </form>
                     </td>
@@ -97,38 +102,39 @@
 </div>
 
 <!-- Modal -->
-<div class="modal fade" id="userModal" tabindex="-1">
+<div class="modal fade" id="userModal" tabindex="-1" aria-labelledby="modalTitle" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="modalTitle">
                     <i class="fa-solid fa-user-plus me-2"></i>Novo Utilizador
                 </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
             </div>
             <div class="modal-body">
                 <form id="userForm" method="POST" action="#">
+                    <?php echo csrf_field(); ?>
                     <div class="mb-3">
-                        <label class="form-label"><i class="fa-solid fa-user text-success"></i> Nome <span class="text-danger">*</span></label>
-                        <input type="text" id="userName" name="name" class="form-control" placeholder="Nome completo" required>
+                        <label for="userName" class="form-label"><i class="fa-solid fa-user text-success" aria-hidden="true"></i> Nome <span class="text-danger">*</span></label>
+                        <input type="text" id="userName" name="name" class="form-control" placeholder="Nome completo" autocomplete="name" minlength="2" maxlength="100" required>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label"><i class="fa-solid fa-envelope text-success"></i> Email <span class="text-danger">*</span></label>
-                        <input type="email" id="userEmail" name="email" class="form-control" placeholder="email@exemplo.com" required>
+                        <label for="userEmail" class="form-label"><i class="fa-solid fa-envelope text-success" aria-hidden="true"></i> Email <span class="text-danger">*</span></label>
+                        <input type="email" id="userEmail" name="email" class="form-control" placeholder="email@exemplo.com" autocomplete="email" maxlength="190" required>
                     </div>
                     <div id="passwordGroup" class="mb-3">
-                        <label class="form-label"><i class="fa-solid fa-lock text-success"></i> Password</label>
+                        <label for="userPassword" class="form-label"><i class="fa-solid fa-lock text-success" aria-hidden="true"></i> Palavra-passe</label>
                         <div class="input-group">
-                            <input type="password" id="userPassword" name="password" class="form-control" placeholder="Mínimo 6 caracteres" minlength="6">
-                            <button type="button" class="btn btn-secondary btn-sm" onclick="togglePwModal()">
-                                <i class="fa-solid fa-eye" id="eyeIcon"></i>
+                            <input type="password" id="userPassword" name="password" class="form-control" placeholder="Mínimo 8 caracteres" minlength="8" maxlength="128" autocomplete="new-password" aria-describedby="passwordHelp">
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="togglePwModal()" aria-label="Mostrar ou ocultar palavra-passe" aria-controls="userPassword">
+                                <i class="fa-solid fa-eye" id="eyeIcon" aria-hidden="true"></i>
                             </button>
                         </div>
-                        <div class="form-text">Apenas necessário na criação.</div>
+                        <div class="form-text" id="passwordHelp">Na criação: pelo menos 8 caracteres, com maiúscula, minúscula e número.</div>
                     </div>
                     <div class="row g-3">
                         <div class="col-6">
-                            <label class="form-label"><i class="fa-solid fa-shield-halved text-success"></i> Perfil</label>
+                            <label for="userRole" class="form-label"><i class="fa-solid fa-shield-halved text-success" aria-hidden="true"></i> Perfil</label>
                             <select id="userRole" name="role" class="form-select">
                                 <option value="user">Utilizador</option>
                                 <option value="admin">Administrador</option>
@@ -141,7 +147,7 @@
                             </div>
                         </div>
                     </div>
-                    <div id="formErrors" class="df-alert df-alert-danger mt-3" style="display:none;"></div>
+                    <div id="formErrors" class="df-alert df-alert-danger mt-3" role="alert" aria-live="assertive" tabindex="-1" hidden></div>
                 </form>
             </div>
             <div class="modal-footer">
@@ -159,31 +165,52 @@
 <script>
 window.BASE_URL = '<?php echo URLROOT; ?>';
 
-// Pesquisa
-document.getElementById('searchUsers')?.addEventListener('input', function() {
-    const q = this.value.toLowerCase();
-    const rows = document.querySelectorAll('#usersBody tr[data-search]');
-    rows.forEach(r => r.style.display = r.dataset.search.includes(q) ? '' : 'none');
-    renderUsersPagination();
-});
+// Paginação acessível e compatível com a pesquisa
+const PER_PAGE = 10;
+let curPage = 1;
+let filteredRows = [];
 
-// Paginação
-const PER_PAGE = 10; let curPage = 1;
-function getVisibleRows() { return Array.from(document.querySelectorAll('#usersBody tr[data-search]')).filter(r => r.style.display !== 'none'); }
+function refreshUserRows() {
+    const query = document.getElementById('searchUsers').value.trim().toLocaleLowerCase('pt-PT');
+    filteredRows = Array.from(document.querySelectorAll('#usersBody tr[data-search]'))
+        .filter(row => row.dataset.search.toLocaleLowerCase('pt-PT').includes(query));
+    curPage = 1;
+    renderUsersPagination();
+}
+
 function renderUsersPagination() {
-    const vis = getVisibleRows(); const total = Math.ceil(vis.length / PER_PAGE);
-    const pg = document.getElementById('usersPagination');
-    if (total <= 1) { pg.innerHTML = ''; return; }
-    let html = `<a class="page-btn ${curPage===1?'disabled':''}" onclick="goUserPage(${curPage-1})"><i class="fa-solid fa-chevron-left"></i></a>`;
-    for (let i=1;i<=total;i++) html += `<a class="page-btn ${i===curPage?'active':''}" onclick="goUserPage(${i})">${i}</a>`;
-    html += `<a class="page-btn ${curPage===total?'disabled':''}" onclick="goUserPage(${curPage+1})"><i class="fa-solid fa-chevron-right"></i></a>`;
-    pg.innerHTML = html;
-    vis.forEach((r,i) => r.style.display = (i>=(curPage-1)*PER_PAGE && i<curPage*PER_PAGE) ? '' : 'none');
+    const allRows = Array.from(document.querySelectorAll('#usersBody tr[data-search]'));
+    const totalPages = Math.max(1, Math.ceil(filteredRows.length / PER_PAGE));
+    curPage = Math.min(curPage, totalPages);
+    const startIndex = (curPage - 1) * PER_PAGE;
+    const visibleSet = new Set(filteredRows.slice(startIndex, startIndex + PER_PAGE));
+    allRows.forEach(row => { row.hidden = !visibleSet.has(row); });
+
+    const pagination = document.getElementById('usersPagination');
+    pagination.innerHTML = '';
+    pagination.setAttribute('aria-label', 'Paginação de utilizadores');
+    if (filteredRows.length <= PER_PAGE) return;
+
+    const makeButton = (label, page, disabled = false, current = false) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `page-btn${current ? ' active' : ''}`;
+        button.textContent = label;
+        button.disabled = disabled;
+        if (current) button.setAttribute('aria-current', 'page');
+        button.addEventListener('click', () => { curPage = page; renderUsersPagination(); });
+        pagination.appendChild(button);
+    };
+
+    makeButton('‹', curPage - 1, curPage === 1);
+    for (let page = 1; page <= totalPages; page += 1) {
+        makeButton(String(page), page, false, page === curPage);
+    }
+    makeButton('›', curPage + 1, curPage === totalPages);
 }
-function goUserPage(p) {
-    const total = Math.ceil(getVisibleRows().length / PER_PAGE);
-    if (p<1||p>total) return; curPage=p; renderUsersPagination();
-}
+
+document.getElementById('searchUsers')?.addEventListener('input', refreshUserRows);
+filteredRows = Array.from(document.querySelectorAll('#usersBody tr[data-search]'));
 renderUsersPagination();
 
 // Modal helpers — inicializar de forma lazy para garantir que Bootstrap já foi carregado
@@ -201,7 +228,7 @@ function openCreateUserModal() {
     form.action = window.BASE_URL + '/admin/users/store';
     document.getElementById('passwordGroup').style.display = 'block';
     document.getElementById('userPassword').required = true;
-    document.getElementById('formErrors').style.display = 'none';
+    document.getElementById('formErrors').hidden = true;
     form.reset(); document.getElementById('userActive').checked = true;
     getBsModal().show();
 }
@@ -216,7 +243,7 @@ function openEditUserModal(user) {
     document.getElementById('userEmail').value        = user.email;
     document.getElementById('userRole').value         = user.role;
     document.getElementById('userActive').checked     = user.is_active == 1;
-    document.getElementById('formErrors').style.display = 'none';
+    document.getElementById('formErrors').hidden = true;
     getBsModal().show();
 }
 
@@ -237,10 +264,10 @@ document.getElementById('userForm').addEventListener('submit', function(e) {
     let errs = [];
     if (!name) errs.push('Insira o nome.');
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errs.push('Email inválido.');
-    if (pwVis && pw.length < 6) errs.push('Password com mínimo 6 caracteres.');
+    if (pwVis && !/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,128}$/.test(pw)) errs.push('A palavra-passe deve ter 8 caracteres, maiúscula, minúscula e número.');
     if (errs.length) {
         errBox.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> ' + errs.join(' ');
-        errBox.style.display = 'flex'; return;
+        errBox.hidden = false; errBox.focus(); return;
     }
     this.submit();
 });

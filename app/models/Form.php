@@ -1,77 +1,115 @@
 <?php
 
-class Form extends Model {
-    protected $table = 'forms';
-
-    public function createForm($data) {
-        $this->db->query('INSERT INTO ' . $this->table .
-            ' (user_id, title, description, slug, status, cover_image)' .
-            ' VALUES (:user_id, :title, :description, :slug, :status, :cover_image)');
-        $this->db->bind(':user_id',      $data['user_id']);
-        $this->db->bind(':title',        $data['title']);
-        $this->db->bind(':description',  $data['description']);
-        $this->db->bind(':slug',         $data['slug']);
-        $this->db->bind(':status',       $data['status']);
-        $this->db->bind(':cover_image',  $data['cover_image'] ?? null);
-        if ($this->db->execute()) return $this->db->lastInsertId();
-        return false;
+class Form extends Model
+{
+    public function createForm(array $data): int
+    {
+        $this->db->query(
+            'INSERT INTO forms (user_id, title, description, slug, status, cover_image)
+             VALUES (:user_id, :title, :description, :slug, :status, :cover_image)'
+        )->bind(':user_id', $data['user_id'])
+         ->bind(':title', $data['title'])
+         ->bind(':description', $data['description'])
+         ->bind(':slug', $data['slug'])
+         ->bind(':status', $data['status'])
+         ->bind(':cover_image', $data['cover_image'] ?? null)
+         ->execute();
+        return (int) $this->db->lastInsertId();
     }
 
-    public function updateForm($data) {
-        $this->db->query('UPDATE ' . $this->table .
-            ' SET title=:title, description=:description, slug=:slug,' .
-            ' status=:status, cover_image=:cover_image WHERE id=:id');
-        $this->db->bind(':id',           $data['id']);
-        $this->db->bind(':title',        $data['title']);
-        $this->db->bind(':description',  $data['description']);
-        $this->db->bind(':slug',         $data['slug']);
-        $this->db->bind(':status',       $data['status']);
-        $this->db->bind(':cover_image',  $data['cover_image'] ?? null);
-        return $this->db->execute();
+    public function updateForm(array $data): bool
+    {
+        return $this->db->query(
+            'UPDATE forms SET title = :title, description = :description, slug = :slug,
+             status = :status, cover_image = :cover_image WHERE id = :id'
+        )->bind(':id', $data['id'])
+         ->bind(':title', $data['title'])
+         ->bind(':description', $data['description'])
+         ->bind(':slug', $data['slug'])
+         ->bind(':status', $data['status'])
+         ->bind(':cover_image', $data['cover_image'] ?? null)
+         ->execute();
     }
 
-    public function getForms() {
-        $this->db->query('SELECT f.*, COUNT(r.id) as response_count ' .
-            'FROM ' . $this->table . ' f ' .
-            'LEFT JOIN responses r ON f.id=r.form_id ' .
-            'GROUP BY f.id ORDER BY f.created_at DESC');
+    public function getForms(): array
+    {
+        $this->db->query(
+            'SELECT f.*, u.name AS owner_name, COUNT(r.id) AS response_count
+             FROM forms f
+             LEFT JOIN users u ON u.id = f.user_id
+             LEFT JOIN responses r ON r.form_id = f.id
+             GROUP BY f.id, u.name
+             ORDER BY f.created_at DESC'
+        );
         return $this->db->resultSet();
     }
 
-    public function getFormById($id) {
-        $this->db->query('SELECT * FROM ' . $this->table . ' WHERE id=:id');
-        $this->db->bind(':id', $id);
+    public function getFormById(int $id): object|false
+    {
+        $this->db->query('SELECT * FROM forms WHERE id = :id')->bind(':id', $id);
         return $this->db->single();
     }
 
-    public function getFormBySlug($slug) {
-        $this->db->query('SELECT * FROM ' . $this->table . ' WHERE slug=:slug');
-        $this->db->bind(':slug', $slug);
+    public function getFormBySlug(string $slug): object|false
+    {
+        $this->db->query('SELECT * FROM forms WHERE slug = :slug LIMIT 1')->bind(':slug', $slug);
         return $this->db->single();
     }
 
-    public function getPublishedForms() {
-        $this->db->query('SELECT * FROM ' . $this->table .
-            ' WHERE status=:status ORDER BY created_at DESC');
-        $this->db->bind(':status', 'published');
+    public function getPublishedForms(): array
+    {
+        $this->db->query(
+            "SELECT f.*, COUNT(q.id) AS question_count
+             FROM forms f LEFT JOIN questions q ON q.form_id = f.id
+             WHERE f.status = 'published'
+             GROUP BY f.id ORDER BY f.created_at DESC"
+        );
         return $this->db->resultSet();
     }
 
-    public function getRecentForms($limit = 5) {
-        $this->db->query('SELECT f.*, COUNT(r.id) as response_count ' .
-            'FROM ' . $this->table . ' f ' .
-            'LEFT JOIN responses r ON f.id=r.form_id ' .
-            'GROUP BY f.id ORDER BY f.created_at DESC LIMIT :limit');
-        $this->db->bind(':limit', $limit, PDO::PARAM_INT);
+    public function getRecentForms(int $limit = 5): array
+    {
+        $limit = max(1, min($limit, 20));
+        $this->db->query(
+            'SELECT f.*, COUNT(r.id) AS response_count
+             FROM forms f LEFT JOIN responses r ON r.form_id = f.id
+             GROUP BY f.id ORDER BY f.created_at DESC LIMIT :limit'
+        )->bind(':limit', $limit, PDO::PARAM_INT);
         return $this->db->resultSet();
     }
 
-    public function getTotalForms() {
-        $this->db->query('SELECT COUNT(*) as total_forms FROM ' . $this->table);
-        return $this->db->single()->total_forms;
+    public function getTotalForms(): int
+    {
+        $this->db->query('SELECT COUNT(*) AS total FROM forms');
+        return (int) ($this->db->single()->total ?? 0);
     }
 
-    public function deleteForm($id) {
-        return parent::delete($this->table, $id);
+    public function slugExists(string $slug, ?int $excludeId = null): bool
+    {
+        $sql = 'SELECT id FROM forms WHERE slug = :slug';
+        if ($excludeId !== null) {
+            $sql .= ' AND id <> :id';
+        }
+        $this->db->query($sql)->bind(':slug', $slug);
+        if ($excludeId !== null) {
+            $this->db->bind(':id', $excludeId);
+        }
+        return (bool) $this->db->single();
+    }
+
+    public function uniqueSlug(string $base, ?int $excludeId = null): string
+    {
+        $slug = $base !== '' ? $base : 'formulario';
+        $candidate = $slug;
+        $suffix = 2;
+        while ($this->slugExists($candidate, $excludeId)) {
+            $candidate = $slug . '-' . $suffix++;
+        }
+        return $candidate;
+    }
+
+    public function deleteForm(int $id): bool
+    {
+        return $this->delete('forms', $id);
     }
 }

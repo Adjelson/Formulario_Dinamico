@@ -1154,3 +1154,71 @@ body {
     font-size: 1.05rem; margin-bottom: .4rem;
 }
 .already-answered-content p { color: var(--green-700); margin-bottom: .4rem; }
+
+/* ================================================================
+   Acessibilidade e responsividade — v2
+   ================================================================ */
+.skip-link {
+    position: fixed;
+    left: 1rem;
+    top: -5rem;
+    z-index: 2000;
+    padding: .75rem 1rem;
+    border-radius: .5rem;
+    background: #fff;
+    color: #0f172a;
+    box-shadow: 0 6px 20px rgba(0,0,0,.25);
+    font-weight: 700;
+}
+.skip-link:focus { top: 1rem; }
+
+:focus-visible {
+    outline: 3px solid #f59e0b !important;
+    outline-offset: 3px;
+}
+
+.form-control:focus,
+.form-select:focus,
+.form-check-input:focus,
+.btn:focus-visible {
+    box-shadow: 0 0 0 .25rem rgba(22, 163, 74, .25);
+}
+
+.invalid-feedback,
+.qfill-error { font-weight: 600; }
+
+[aria-busy="true"] { cursor: wait; }
+
+.table-responsive { -webkit-overflow-scrolling: touch; }
+
+@media (max-width: 767.98px) {
+    .df-main { padding-top: 1rem; }
+    .page-header { align-items: stretch; }
+    .page-header > * { width: 100%; }
+    .page-header .btn { justify-content: center; }
+    .df-card-body { padding: 1rem; }
+    .form-fill-header { padding: 1.25rem; }
+    .form-fill-body { padding: 1rem; }
+    .form-fill-footer { align-items: stretch; }
+    .form-fill-footer .btn { width: 100%; justify-content: center; }
+    .qcard-actions { display: flex; gap: .25rem; }
+    .auth-card { margin-inline: .75rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        scroll-behavior: auto !important;
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .01ms !important;
+    }
+}
+
+@media (prefers-contrast: more) {
+    :root {
+        --black-500: #334155;
+        --black-300: #64748b;
+        --green-600: #0f7a34;
+    }
+    .df-card, .form-control, .form-select { border-width: 2px; }
+}

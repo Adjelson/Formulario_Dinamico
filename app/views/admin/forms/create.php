@@ -1,7 +1,11 @@
 <?php require_once APPROOT . '/app/views/layout/header.php'; ?>
 <div class="container-xl">
 
-    <div class="page-header">
+    <?php if (!empty($data['general_err'] ?? '')): ?>
+    <div class="alert alert-danger" role="alert"><?php echo e($data['general_err']); ?></div>
+<?php endif; ?>
+
+<div class="page-header">
         <h1><i class="fa-solid fa-plus-circle"></i> Criar Formulário</h1>
         <a href="<?php echo URLROOT; ?>/admin/forms" class="btn btn-secondary">
             <i class="fa-solid fa-arrow-left"></i> Voltar
@@ -10,6 +14,7 @@
 
     <form action="<?php echo URLROOT; ?>/admin/forms/store" method="POST"
           id="formBuilder" enctype="multipart/form-data">
+              <?php echo csrf_field(); ?>
         <div class="row g-4">
 
             <!-- Coluna principal -->
@@ -21,28 +26,28 @@
                     </div>
                     <div class="df-card-body">
                         <div class="mb-3">
-                            <label class="form-label">
-                                <i class="fa-solid fa-heading"></i> Título
+                            <label class="form-label" for="formTitle">
+                                <i class="fa-solid fa-heading" aria-hidden="true"></i> Título
                                 <span class="text-danger">*</span>
                             </label>
-                            <input type="text" name="title"
+                            <input type="text" id="formTitle" name="title"
                                    class="form-control <?php echo !empty($data['title_err']) ? 'is-invalid' : ''; ?>"
                                    value="<?php echo htmlspecialchars($data['title'] ?? ''); ?>"
-                                   placeholder="Ex: Inquérito de Satisfação 2025">
+                                   placeholder="Ex: Inquérito de Satisfação 2025" maxlength="255" autocomplete="off" required>
                             <?php if (!empty($data['title_err'])): ?>
                                 <div class="invalid-feedback">
                                     <i class="fa-solid fa-triangle-exclamation"></i>
-                                    <?php echo $data['title_err']; ?>
+                                    <?php echo e($data['title_err']); ?>
                                 </div>
                             <?php endif; ?>
                             <div class="form-text">Escolha um título claro que identifique o propósito do formulário.</div>
                         </div>
 
                         <div class="mb-0">
-                            <label class="form-label">
-                                <i class="fa-solid fa-align-left"></i> Descrição
+                            <label class="form-label" for="formDescription">
+                                <i class="fa-solid fa-align-left" aria-hidden="true"></i> Descrição
                             </label>
-                            <textarea name="description" class="form-control" rows="3"
+                            <textarea id="formDescription" name="description" class="form-control" rows="3" maxlength="10000"
                                 placeholder="Explique brevemente o objetivo deste formulário..."><?php
                                     echo htmlspecialchars($data['description'] ?? '');
                                 ?></textarea>
@@ -98,10 +103,10 @@
                             <i class="fa-solid fa-cloud-arrow-up"></i>
                             <span id="coverBtnText">Selecionar Imagem</span>
                             <input type="file" id="cover_image" name="cover_image"
-                                   accept="image/jpeg,image/png,image/gif,image/webp"
+                                   accept="image/jpeg,image/png,image/webp"
                                    class="d-none" onchange="previewCover(this)">
                         </label>
-                        <div class="form-text mt-2" id="coverFileName"></div>
+                        <div class="form-text mt-2" id="coverFileName" aria-live="polite"></div>
                     </div>
                 </div>
 
@@ -113,10 +118,10 @@
                     </div>
                     <div class="df-card-body">
                         <div class="mb-0">
-                            <label class="form-label">
-                                <i class="fa-solid fa-toggle-on"></i> Status
+                            <label class="form-label" for="formStatus">
+                                <i class="fa-solid fa-toggle-on" aria-hidden="true"></i> Estado
                             </label>
-                            <select name="status" class="form-select">
+                            <select id="formStatus" name="status" class="form-select">
                                 <option value="draft"     <?php echo ($data['status']??'draft')=='draft'     ? 'selected':''?>>
                                     📝 Rascunho — visível só para admin
                                 </option>
@@ -154,7 +159,7 @@ function previewCover(input) {
 
         // Validar tamanho no cliente (2MB)
         if (file.size > 2 * 1024 * 1024) {
-            alert('O ficheiro é demasiado grande. Tamanho máximo: 2MB.');
+            alert('O ficheiro é demasiado grande. Tamanho máximo: 2 MB.');
             input.value = '';
             return;
         }
@@ -171,6 +176,27 @@ function previewCover(input) {
         btnText.textContent = 'Alterar Imagem';
     }
 }
+</script>
+<script>
+window.existingQuestions = <?php
+$builderQuestions = array_map(static function ($question): array {
+    $get = static fn(string $key, mixed $default = null): mixed => is_array($question)
+        ? ($question[$key] ?? $default)
+        : ($question->{$key} ?? $default);
+    $config = $get('config', '{}');
+    if (is_array($config)) {
+        $config = json_encode($config, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+    return [
+        'id' => (int) $get('id', 0),
+        'label' => (string) $get('label', ''),
+        'type' => (string) $get('type', 'short_text'),
+        'is_required' => (int) $get('is_required', 0),
+        'config' => (string) $config,
+    ];
+}, $data['questions'] ?? []);
+echo json_encode($builderQuestions, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+?>;
 </script>
 <script src="<?php echo URLROOT; ?>/js/form-builder.js"></script>
 <?php require_once APPROOT . '/app/views/layout/footer.php'; ?>

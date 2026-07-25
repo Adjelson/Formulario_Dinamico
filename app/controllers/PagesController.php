@@ -1,28 +1,27 @@
 <?php
 
-class PagesController extends Controller {
-    public function __construct($params = []) {
-        parent::__construct($params);
+class PagesController extends Controller
+{
+    public function index(): void
+    {
+        $this->requireAuth();
+        if (($_SESSION['user_role'] ?? '') === 'admin') {
+            $this->redirect('admin/dashboard');
+        }
+
+        $formModel = $this->model('Form');
+        $responseModel = $this->model('Response');
+        $this->view('public/forms_list', [
+            'forms' => $formModel->getPublishedForms(),
+            'answeredFormIds' => $responseModel->getAnsweredFormIds((int) $_SESSION['user_id']),
+        ]);
     }
 
-    // Página inicial para utilizador normal — lista formulários publicados
-    public function index() {
-        if (!isset($_SESSION['user_id'])) {
-            header('location:' . URLROOT . '/login'); exit();
-        }
-        if ($_SESSION['user_role'] == 'admin') {
-            header('location:' . URLROOT . '/admin/dashboard'); exit();
-        }
-        $formModel = $this->model('Form');
-        $forms = $formModel->getPublishedForms();
-        $this->view('public/forms_list', ['forms' => $forms]);
-    }
-
-    // Página de sucesso após submissão de formulário
-    public function formSuccess() {
-        $slug = $this->params['slug'] ?? '';
-        $formModel = $this->model('Form');
-        $form = $slug ? $formModel->getFormBySlug($slug) : null;
+    public function formSuccess(): void
+    {
+        $this->requireAuth();
+        $slug = (string) ($this->params['slug'] ?? '');
+        $form = $slug !== '' ? $this->model('Form')->getFormBySlug($slug) : false;
         $this->view('public/form_success', ['form' => $form, 'slug' => $slug]);
     }
 }

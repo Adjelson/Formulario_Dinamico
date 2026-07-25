@@ -1,94 +1,48 @@
-<?php require_once APPROOT . '/app/views/layout/header.php'; ?>
-
+<?php require APPROOT . '/app/views/layout/header.php'; ?>
 <div class="auth-wrapper">
-    <div class="auth-card" style="max-width:480px;">
-        <div class="auth-logo"><i class="fa-solid fa-user-plus"></i></div>
-        <h1 class="auth-title">Criar Conta</h1>
-        <p class="auth-subtitle">Preencha os dados para se registar</p>
+    <div class="auth-card" aria-labelledby="register-title">
+        <h1 class="auth-title" id="register-title">Criar conta</h1>
+        <p class="auth-subtitle">Preencha os dados para aceder aos formulários.</p>
 
-        <?php if (!empty($data['redirect'] ?? '')): ?>
-            <div class="df-alert df-alert-info">
-                <i class="fa-solid fa-circle-info"></i>
-                <span>Após criar a conta será redirecionado para o formulário.</span>
-            </div>
-        <?php endif; ?>
+        <?php if (!empty($data['general_err'])): ?><div class="alert alert-danger" role="alert"><?php echo e($data['general_err']); ?></div><?php endif; ?>
 
-        <form action="<?php echo URLROOT; ?>/register" method="POST" novalidate>
-            <input type="hidden" name="redirect" value="<?php echo htmlspecialchars($data['redirect'] ?? ''); ?>">
+        <form action="<?php echo e(URLROOT); ?>/register" method="post">
+<?php echo csrf_field(); ?>
+<input type="hidden" name="redirect" value="<?php echo e($data['redirect'] ?? ''); ?>">
 
             <div class="mb-3">
-                <label class="form-label"><i class="fa-solid fa-user"></i> Nome completo</label>
-                <div class="input-group">
-                    <span class="input-group-text"><i class="fa-solid fa-id-card"></i></span>
-                    <input type="text" name="name" class="form-control <?php echo !empty($data['name_err'] ?? '') ? 'is-invalid' : ''; ?>"
-                        value="<?php echo htmlspecialchars($data['name'] ?? ''); ?>"
-                        placeholder="O seu nome completo" required>
-                </div>
-                <?php if (!empty($data['name_err'] ?? '')): ?>
-                    <div class="invalid-feedback d-flex"><i class="fa-solid fa-triangle-exclamation"></i><?php echo htmlspecialchars($data['name_err']); ?></div>
-                <?php endif; ?>
+                <label class="form-label" for="register-name">Nome completo</label>
+                <input id="register-name" type="text" name="name" required maxlength="100" autocomplete="name"
+                    class="form-control <?php echo !empty($data['name_err']) ? 'is-invalid' : ''; ?>" value="<?php echo e($data['name'] ?? ''); ?>">
+                <?php if (!empty($data['name_err'])): ?><div class="invalid-feedback"><?php echo e($data['name_err']); ?></div><?php endif; ?>
             </div>
 
             <div class="mb-3">
-                <label class="form-label"><i class="fa-solid fa-envelope"></i> Email</label>
-                <div class="input-group">
-                    <span class="input-group-text"><i class="fa-solid fa-at"></i></span>
-                    <input type="email" name="email" class="form-control <?php echo !empty($data['email_err'] ?? '') ? 'is-invalid' : ''; ?>"
-                        value="<?php echo htmlspecialchars($data['email'] ?? ''); ?>"
-                        placeholder="o.seu@email.com" required>
-                </div>
-                <?php if (!empty($data['email_err'] ?? '')): ?>
-                    <div class="invalid-feedback d-flex"><i class="fa-solid fa-triangle-exclamation"></i><?php echo htmlspecialchars($data['email_err']); ?></div>
-                <?php endif; ?>
+                <label class="form-label" for="register-email">Email</label>
+                <input id="register-email" type="email" name="email" required maxlength="190" autocomplete="email"
+                    class="form-control <?php echo !empty($data['email_err']) ? 'is-invalid' : ''; ?>" value="<?php echo e($data['email'] ?? ''); ?>">
+                <?php if (!empty($data['email_err'])): ?><div class="invalid-feedback"><?php echo e($data['email_err']); ?></div><?php endif; ?>
             </div>
 
             <div class="mb-3">
-                <label class="form-label"><i class="fa-solid fa-lock"></i> Password</label>
-                <div class="input-group">
-                    <span class="input-group-text"><i class="fa-solid fa-key"></i></span>
-                    <input type="password" name="password" id="regPw" class="form-control <?php echo !empty($data['password_err'] ?? '') ? 'is-invalid' : ''; ?>"
-                        placeholder="Mínimo 6 caracteres" required>
-                    <button class="btn btn-secondary btn-sm" type="button" onclick="togglePw('regPw',this)"><i class="fa-solid fa-eye"></i></button>
-                </div>
-                <div class="form-text"><i class="fa-solid fa-circle-info me-1"></i>Mínimo de 6 caracteres.</div>
-                <?php if (!empty($data['password_err'] ?? '')): ?>
-                    <div class="invalid-feedback d-flex"><i class="fa-solid fa-triangle-exclamation"></i><?php echo htmlspecialchars($data['password_err']); ?></div>
-                <?php endif; ?>
+                <label class="form-label" for="register-password">Palavra-passe</label>
+                <input id="register-password" type="password" name="password" required minlength="8" autocomplete="new-password"
+                    class="form-control <?php echo !empty($data['password_err']) ? 'is-invalid' : ''; ?>" aria-describedby="password-help">
+                <div class="form-text" id="password-help">Pelo menos 8 caracteres, com maiúscula, minúscula e número.</div>
+                <?php if (!empty($data['password_err'])): ?><div class="invalid-feedback"><?php echo e($data['password_err']); ?></div><?php endif; ?>
             </div>
 
             <div class="mb-4">
-                <label class="form-label"><i class="fa-solid fa-lock"></i> Confirmar Password</label>
-                <div class="input-group">
-                    <span class="input-group-text"><i class="fa-solid fa-check"></i></span>
-                    <input type="password" name="confirm_password" id="regPw2" class="form-control <?php echo !empty($data['confirm_password_err'] ?? '') ? 'is-invalid' : ''; ?>"
-                        placeholder="Repita a password" required>
-                    <button class="btn btn-secondary btn-sm" type="button" onclick="togglePw('regPw2',this)"><i class="fa-solid fa-eye"></i></button>
-                </div>
-                <?php if (!empty($data['confirm_password_err'] ?? '')): ?>
-                    <div class="invalid-feedback d-flex"><i class="fa-solid fa-triangle-exclamation"></i><?php echo htmlspecialchars($data['confirm_password_err']); ?></div>
-                <?php endif; ?>
+                <label class="form-label" for="register-confirm">Confirmar palavra-passe</label>
+                <input id="register-confirm" type="password" name="confirm_password" required autocomplete="new-password"
+                    class="form-control <?php echo !empty($data['confirm_password_err']) ? 'is-invalid' : ''; ?>">
+                <?php if (!empty($data['confirm_password_err'])): ?><div class="invalid-feedback"><?php echo e($data['confirm_password_err']); ?></div><?php endif; ?>
             </div>
 
-            <button type="submit" class="btn btn-primary btn-block">
-                <i class="fa-solid fa-user-plus"></i> Criar Conta
-            </button>
+            <button type="submit" class="btn btn-primary btn-block"><i class="fa-solid fa-user-plus" aria-hidden="true"></i> Criar conta</button>
         </form>
-
         <div class="auth-divider"><span>ou</span></div>
-        <p class="text-center mb-0" style="font-size:.875rem;">
-            Já tem conta?
-            <a href="<?php echo URLROOT; ?>/login<?php echo !empty($data['redirect'] ?? '') ? '?redirect=' . urlencode($data['redirect']) : ''; ?>" class="fw-600 text-success">
-                Entrar <i class="fa-solid fa-arrow-right fa-xs"></i>
-            </a>
-        </p>
+        <p class="text-center mb-0">Já tem conta? <a href="<?php echo e(URLROOT); ?>/login">Entrar</a></p>
     </div>
 </div>
-<script>
-function togglePw(id, btn) {
-    const input = document.getElementById(id);
-    const icon  = btn.querySelector('i');
-    if (input.type === 'password') { input.type = 'text'; icon.classList.replace('fa-eye','fa-eye-slash'); }
-    else { input.type = 'password'; icon.classList.replace('fa-eye-slash','fa-eye'); }
-}
-</script>
-<?php require_once APPROOT . '/app/views/layout/footer.php'; ?>
+<?php require APPROOT . '/app/views/layout/footer.php'; ?>
